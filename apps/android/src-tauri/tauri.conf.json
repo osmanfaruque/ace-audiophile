@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Audiophile Ace",
+  "version": "0.1.0",
+  "identifier": "com.audiophileace.android",
+  "build": {
+    "frontendDist": "../../packages/ui/out",
+    "devUrl": "http://10.0.2.2:3000",
+    "beforeDevCommand": "cd ../../packages/ui && pnpm dev",
+    "beforeBuildCommand": "cd ../../packages/ui && pnpm build"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "Audiophile Ace",
+        "fullscreen": false,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["apk", "aab"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "android": {
+      "minSdkVersion": 24
+    }
+  }
+}

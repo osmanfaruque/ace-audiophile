@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/desktop/src-tauri",
+    "apps/linux/src-tauri",
+    "apps/android/src-tauri",
+]
+
+[workspace.dependencies]
+tauri        = { version = "2" }
+serde        = { version = "1", features = ["derive"] }
+serde_json   = "1"

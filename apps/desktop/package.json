@@ -1,0 +1,18 @@
+{
+  "name": "@ace/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Audiophile Ace — Desktop (Windows / macOS)",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@ace/ui": "workspace:*",
+    "@tauri-apps/api": "^2.5.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "main-capability",
+  "description": "Default capability for Android app",
+  "platforms": ["android"],
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:default",
+    "dialog:default",
+    "fs:default"
+  ]
+}

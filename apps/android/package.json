@@ -1,0 +1,19 @@
+{
+  "name": "@ace/android",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Audiophile Ace — Android",
+  "scripts": {
+    "dev": "tauri android dev",
+    "build": "tauri android build",
+    "open": "tauri android open",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@ace/ui": "workspace:*",
+    "@tauri-apps/api": "^2.5.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1"
+  }
+}
