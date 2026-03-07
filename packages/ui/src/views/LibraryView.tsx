@@ -2,14 +2,15 @@
 
 import { useState, useCallback, useMemo } from 'react'
 import {
-  FolderOpen, Search, Grid, List, ChevronUp, ChevronDown, Play, Plus,
+  FolderOpen, Search, Grid, List, ChevronUp, ChevronDown, Play, Star,
+  Music2, Disc3, Mic2, Tag,
 } from 'lucide-react'
 import { usePlaybackStore } from '@/store/playbackStore'
 import { useAppStore } from '@/store/appStore'
 import { formatDuration, formatSampleRate, cn } from '@/lib/utils'
 import type { AudioTrack, AudioCodec } from '@ace/types'
 
-// ── Track factory (same as PlayerView) ───────────────────────────────────────
+// ── Track factory ─────────────────────────────────────────────────────────────
 
 function makeTrackFromPath(filePath: string, index: number): AudioTrack {
   const fileName = filePath.split(/[\\/]/).pop() ?? filePath
@@ -46,163 +47,360 @@ async function openAudioFiles(): Promise<string[]> {
   } catch { return [] }
 }
 
-async function openFolder(): Promise<string | null> {
-  try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const result = await open({ directory: true, multiple: false })
-    if (!result) return null
-    return Array.isArray(result) ? result[0] : result
-  } catch { return null }
-}
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type SortKey = 'title' | 'artist' | 'album' | 'year' | 'codec' | 'sampleRate' | 'durationMs'
+type SortKey = 'title' | 'artist' | 'album' | 'year' | 'codec' | 'sampleRate' | 'durationMs' | 'playCount' | 'rating'
 type SortDir = 'asc' | 'desc'
-type ViewMode = 'list' | 'library' | 'albums' | 'artists'
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Star Rating widget ────────────────────────────────────────────────────────
+
+function StarRating({
+  value, onChange, size = 12,
+}: { value: number; onChange?: (v: number) => void; size?: number }) {
+  const [hover, setHover] = useState(0)
+  return (
+    <div className="flex items-center gap-0.5" onMouseLeave={() => setHover(0)}>
+      {[1, 2, 3, 4, 5].map((s) => (
+        <button
+          key={s}
+          onClick={(e) => { e.stopPropagation(); onChange?.(s === value ? 0 : s) }}
+          onMouseEnter={() => setHover(s)}
+          style={{ color: (hover || value) >= s ? '#f59e0b' : 'var(--ace-border)', lineHeight: 1 }}
+        >
+          <Star size={size} fill={(hover || value) >= s ? '#f59e0b' : 'none'} />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ── Left side-panel (mode-aware) ──────────────────────────────────────────────
+
+function SidePanel({
+  mode, tracks, activeFilter, setFilter,
+}: {
+  mode: string
+  tracks: AudioTrack[]
+  activeFilter: string | null
+  setFilter: (v: string | null) => void
+}) {
+  const mutedColor: React.CSSProperties = { color: 'var(--ace-text-muted)' }
+  const borderLine = { borderColor: 'var(--ace-border)' }
+
+  if (mode === 'genres') {
+    const genres = useMemo(() => {
+      const map = new Map<string, number>()
+      tracks.forEach((t) => {
+        const g = t.genre || 'Unknown Genre'
+        map.set(g, (map.get(g) ?? 0) + 1)
+      })
+      return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+    }, [tracks])
+    return (
+      <div className="w-48 shrink-0 flex flex-col border-r overflow-hidden"
+        style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)' }}>
+        <div className="px-3 py-2 text-xs uppercase tracking-widest border-b flex items-center gap-1.5"
+          style={{ ...mutedColor, ...borderLine }}>
+          <Tag size={11} /> Genres
+        </div>
+        {tracks.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center p-4">
+            <span className="text-xs text-center" style={mutedColor}>No genres yet</span>
+          </div>
+        ) : (
+          <div className="overflow-y-auto flex-1">
+            <button
+              onClick={() => setFilter(null)}
+              className="w-full text-left px-3 py-1.5 text-xs border-b hover:bg-white/5 transition-colors"
+              style={{ borderColor: 'var(--ace-border)', color: activeFilter === null ? 'var(--ace-accent)' : 'var(--ace-text-secondary)' }}>
+              All Genres ({genres.length})
+            </button>
+            {genres.map(([genre, count]) => (
+              <button key={genre} onClick={() => setFilter(genre)}
+                className="w-full text-left px-3 py-1.5 border-b hover:bg-white/5 transition-colors"
+                style={{ borderColor: 'var(--ace-border)', background: activeFilter === genre ? 'rgba(255,255,255,0.05)' : 'transparent' }}>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-md shrink-0 flex items-center justify-center"
+                    style={{ background: 'var(--ace-accent-dim)' }}>
+                    <Music2 size={10} style={{ color: 'var(--ace-accent)' }} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs truncate" style={{ color: activeFilter === genre ? 'var(--ace-accent)' : 'var(--ace-text-primary)' }}>{genre}</p>
+                    <p className="text-[10px]" style={mutedColor}>{count} track{count !== 1 ? 's' : ''}</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (mode === 'albums') {
+    const albums = useMemo(() => {
+      const map = new Map<string, { album: string; artist: string; count: number }>()
+      tracks.forEach((t) => {
+        const key = t.album
+        if (!map.has(key)) map.set(key, { album: t.album, artist: t.albumArtist || t.artist, count: 0 })
+        map.get(key)!.count++
+      })
+      return Array.from(map.values()).sort((a, b) => a.album.localeCompare(b.album))
+    }, [tracks])
+    return (
+      <div className="w-48 shrink-0 flex flex-col border-r overflow-hidden"
+        style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)' }}>
+        <div className="px-3 py-2 text-xs uppercase tracking-widest border-b flex items-center gap-1.5"
+          style={{ ...mutedColor, ...borderLine }}>
+          <Disc3 size={11} /> Albums
+        </div>
+        {tracks.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center p-4">
+            <span className="text-xs text-center" style={mutedColor}>No albums yet</span>
+          </div>
+        ) : (
+          <div className="overflow-y-auto flex-1">
+            <button onClick={() => setFilter(null)}
+              className="w-full text-left px-3 py-1.5 text-xs border-b hover:bg-white/5 transition-colors"
+              style={{ borderColor: 'var(--ace-border)', color: activeFilter === null ? 'var(--ace-accent)' : 'var(--ace-text-secondary)' }}>
+              All Albums ({albums.length})
+            </button>
+            {albums.map(({ album, artist, count }) => (
+              <button key={album} onClick={() => setFilter(album)}
+                className="w-full text-left px-3 py-1.5 border-b hover:bg-white/5 transition-colors"
+                style={{ borderColor: 'var(--ace-border)', background: activeFilter === album ? 'rgba(255,255,255,0.05)' : 'transparent' }}>
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-md shrink-0 flex items-center justify-center"
+                    style={{ background: 'var(--ace-accent-dim)' }}>
+                    <Disc3 size={12} style={{ color: 'var(--ace-accent)' }} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs truncate" style={{ color: activeFilter === album ? 'var(--ace-accent)' : 'var(--ace-text-primary)' }}>{album}</p>
+                    <p className="text-[10px] truncate" style={mutedColor}>{artist} · {count} track{count !== 1 ? 's' : ''}</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Default: artists (library / artists mode)
+  const artists = useMemo(() => {
+    const map = new Map<string, number>()
+    tracks.forEach((t) => map.set(t.artist, (map.get(t.artist) ?? 0) + 1))
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [tracks])
+  return (
+    <div className="w-48 shrink-0 flex flex-col border-r overflow-hidden"
+      style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)' }}>
+      <div className="px-3 py-2 text-xs uppercase tracking-widest border-b flex items-center gap-1.5"
+        style={{ ...mutedColor, ...borderLine }}>
+        <Mic2 size={11} /> Artists
+      </div>
+      {tracks.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center p-4">
+          <span className="text-xs text-center" style={mutedColor}>No artists yet</span>
+        </div>
+      ) : (
+        <div className="overflow-y-auto flex-1">
+          <button onClick={() => setFilter(null)}
+            className="w-full text-left px-3 py-1.5 text-xs border-b hover:bg-white/5 transition-colors"
+            style={{ borderColor: 'var(--ace-border)', color: activeFilter === null ? 'var(--ace-accent)' : 'var(--ace-text-secondary)' }}>
+            All Artists ({artists.length})
+          </button>
+          {artists.map(([artist, count]) => (
+            <button key={artist} onClick={() => setFilter(artist)}
+              className="w-full text-left px-3 py-1.5 border-b hover:bg-white/5 transition-colors"
+              style={{ borderColor: 'var(--ace-border)', background: activeFilter === artist ? 'rgba(255,255,255,0.05)' : 'transparent' }}>
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-xs font-bold"
+                  style={{ background: 'var(--ace-accent-dim)', color: 'var(--ace-accent)' }}>
+                  {artist[0]?.toUpperCase() ?? '?'}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs truncate" style={{ color: activeFilter === artist ? 'var(--ace-accent)' : 'var(--ace-text-primary)' }}>{artist}</p>
+                  <p className="text-[10px]" style={mutedColor}>{count} track{count !== 1 ? 's' : ''}</p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
 
 export function LibraryView({ mode }: { mode: string }) {
-  const store    = usePlaybackStore()
+  const store      = usePlaybackStore()
   const { uiMode } = useAppStore()
-  const techie   = uiMode === 'techie'
+  const techie     = uiMode === 'techie'
 
-  // Local library state (queue is source of truth for now)
-  const tracks   = store.queue.map((qi) => {
-    // In Phase 1, we store tracks we open in the queue. We fake the track
-    // object from the queueId for display; real library will come in Phase 2.
-    const t = store.currentTrack?.id === qi.trackId ? store.currentTrack : null
-    return t ?? makeTrackFromPath(qi.trackId, qi.position)
-  })
+  // Derive flat track list from queue (Phase 1 source)
+  const tracks = useMemo(() =>
+    store.queue.map((qi) => {
+      const t = store.currentTrack?.id === qi.trackId ? store.currentTrack : null
+      return t ?? makeTrackFromPath(qi.trackId, qi.position)
+    }),
+  [store.queue, store.currentTrack])
 
-  const [search,   setSearch]   = useState('')
-  const [sortKey,  setSortKey]  = useState<SortKey>('title')
-  const [sortDir,  setSortDir]  = useState<SortDir>('asc')
-  const [selected, setSelected] = useState<string | null>(null)
-  const [gridView, setGridView] = useState(false)
+  // ── Local state ──────────────────────────────────────────
+  const [search,      setSearch]      = useState('')
+  const [sortKey,     setSortKey]     = useState<SortKey>('title')
+  const [sortDir,     setSortDir]     = useState<SortDir>('asc')
+  const [selected,    setSelected]    = useState<string | null>(null)
+  const [gridView,    setGridView]    = useState(false)
+  const [activeFilter, setActiveFilter] = useState<string | null>(null)
 
-  // ── Filtering/sorting ─────────────────────────────────────────────────────
+  // Per-track ratings stored locally (Phase 1; will move to DB in Phase 2)
+  const [ratings, setRatings] = useState<Record<string, number>>({})
+  const setRating = useCallback((id: string, val: number) =>
+    setRatings((prev) => ({ ...prev, [id]: val })), [])
+
+  // ── Filtering ────────────────────────────────────────────
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
-    return tracks
-      .filter((t) =>
-        !q ||
+
+    let list = tracks.filter((t) => {
+      // Text search
+      if (q && !(
         t.title.toLowerCase().includes(q) ||
         t.artist.toLowerCase().includes(q) ||
-        t.album.toLowerCase().includes(q),
-      )
-      .sort((a, b) => {
-        const av = a[sortKey] ?? ''
-        const bv = b[sortKey] ?? ''
-        const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true })
-        return sortDir === 'asc' ? cmp : -cmp
-      })
-  }, [tracks, search, sortKey, sortDir])
+        t.album.toLowerCase().includes(q) ||
+        t.genre.toLowerCase().includes(q)
+      )) return false
+
+      // Side-panel filter
+      if (activeFilter !== null) {
+        if (mode === 'genres')  return (t.genre || 'Unknown Genre') === activeFilter
+        if (mode === 'albums')  return t.album === activeFilter
+        return t.artist === activeFilter   // artists / library
+      }
+      return true
+    })
+
+    list = list.slice().sort((a, b) => {
+      let av: string | number
+      let bv: string | number
+      if (sortKey === 'rating') {
+        av = ratings[a.id] ?? 0
+        bv = ratings[b.id] ?? 0
+      } else {
+        av = a[sortKey] ?? ''
+        bv = b[sortKey] ?? ''
+      }
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av).localeCompare(String(bv), undefined, { numeric: true })
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+
+    return list
+  }, [tracks, search, sortKey, sortDir, activeFilter, mode, ratings])
 
   const toggleSort = useCallback((key: SortKey) => {
     setSortKey((prev) => {
       if (prev === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
-      else { setSortDir('asc') }
+      else setSortDir('asc')
       return key
     })
   }, [])
 
-  // ── Actions ───────────────────────────────────────────────────────────────
+  // ── Actions ───────────────────────────────────────────────
   const handleOpenFiles = useCallback(async () => {
     const paths = await openAudioFiles()
     if (!paths.length) return
     const newTracks = paths.map(makeTrackFromPath)
     store.addToQueue(newTracks)
     if (!store.currentTrack) {
-      try { const { getAudioEngine } = await import('@/lib/audioEngine'); await getAudioEngine().openFile(newTracks[0].filePath); store._onTrackChange(newTracks[0]) } catch {}
+      try {
+        const { getAudioEngine } = await import('@/lib/audioEngine')
+        await getAudioEngine().openFile(newTracks[0].filePath)
+        store._onTrackChange(newTracks[0])
+      } catch {}
       await store.play(newTracks[0].id)
     }
   }, [store])
 
   const handlePlayTrack = useCallback(async (track: AudioTrack) => {
-    try { const { getAudioEngine } = await import('@/lib/audioEngine'); await getAudioEngine().openFile(track.filePath); store._onTrackChange(track) } catch {}
+    try {
+      const { getAudioEngine } = await import('@/lib/audioEngine')
+      await getAudioEngine().openFile(track.filePath)
+      store._onTrackChange(track)
+    } catch {}
     await store.play(track.id)
   }, [store])
 
-  const selectedTrack = selected ? filtered.find((t) => t.id === selected) ?? null : null
+  // ── Style helpers ─────────────────────────────────────────
+  const mutedColor: React.CSSProperties  = { color: 'var(--ace-text-muted)' }
+  const trackColor: React.CSSProperties  = { color: 'var(--ace-text-primary)' }
 
-  const trackColor: React.CSSProperties = { color: 'var(--ace-text-primary)' }
-  const mutedColor: React.CSSProperties = { color: 'var(--ace-text-muted)' }
-  const borderLine = { borderColor: 'var(--ace-border)' }
+  // ── Column definitions ────────────────────────────────────
+  const COLS: { key: SortKey; label: string; mono?: boolean }[] = [
+    { key: 'title',      label: 'Title'  },
+    { key: 'artist',     label: 'Artist' },
+    { key: 'album',      label: 'Album'  },
+    { key: 'year',       label: 'Year',  mono: true },
+    { key: 'codec',      label: 'Format',mono: true },
+    { key: 'sampleRate', label: 'SR',    mono: true },
+    { key: 'durationMs', label: 'Time',  mono: true },
+    { key: 'playCount',  label: 'Plays', mono: true },
+    { key: 'rating',     label: 'Rating' },
+  ]
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────
   return (
     <div className="flex h-full overflow-hidden" style={{ background: 'var(--ace-bg)' }}>
 
-      {/* ════════════════ LEFT ARTIST PANEL ════════════════ */}
+      {/* ══ Left panel (mode-aware) ══ */}
       {!techie && (
-        <div className="w-48 shrink-0 flex flex-col border-r overflow-hidden"
-          style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)' }}>
-          <div className="px-3 py-2 text-xs uppercase tracking-widest border-b"
-            style={{ ...mutedColor, ...borderLine }}>
-            Artists
-          </div>
-          {tracks.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center p-4">
-              <span className="text-xs text-center" style={mutedColor}>No artists yet</span>
-            </div>
-          ) : (() => {
-            // Group by artist
-            const artists = Array.from(new Set(tracks.map((t) => t.artist))).sort()
-            return (
-              <div className="overflow-y-auto flex-1">
-                <button className="w-full text-left px-3 py-1.5 text-xs border-b hover:bg-white/5 transition-colors"
-                  style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-accent)' }}>
-                  All Artists ({artists.length})
-                </button>
-                {artists.map((artist) => {
-                  const count = tracks.filter((t) => t.artist === artist).length
-                  return (
-                    <button key={artist}
-                      className="w-full text-left px-3 py-1.5 border-b hover:bg-white/5 transition-colors"
-                      style={{ borderColor: 'var(--ace-border)' }}>
-                      <div className="flex items-center gap-2">
-                        {/* Avatar circle */}
-                        <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-xs font-bold"
-                          style={{ background: 'var(--ace-accent-dim)', color: 'var(--ace-accent)' }}>
-                          {artist[0]?.toUpperCase() ?? '?'}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs truncate" style={trackColor}>{artist}</p>
-                          <p className="text-[10px]" style={mutedColor}>{count} track{count !== 1 ? 's' : ''}</p>
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          })()}
-        </div>
+        <SidePanel
+          mode={mode}
+          tracks={tracks}
+          activeFilter={activeFilter}
+          setFilter={setActiveFilter}
+        />
       )}
 
-      {/* ════════════════ CENTER TRACK TABLE ════════════════ */}
+      {/* ══ Center ══ */}
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Toolbar */}
         <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b"
           style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)' }}>
 
+          {/* Mode label */}
+          <span className="text-xs font-semibold uppercase tracking-widest hidden sm:block"
+            style={{ color: 'var(--ace-text-muted)' }}>
+            {mode === 'genres' ? 'Genres' : mode === 'albums' ? 'Albums' : mode === 'artists' ? 'Artists' : 'Library'}
+          </span>
+
           {/* Search */}
           <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
-              style={mutedColor} />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={mutedColor} />
             <input
               value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder="Search…"
               className="pl-7 pr-3 py-1.5 rounded-lg text-xs focus:outline-none"
               style={{
                 background: 'var(--ace-surface)', color: 'var(--ace-text-primary)',
-                border: '1px solid var(--ace-border)', width: 200,
+                border: '1px solid var(--ace-border)', width: 190,
               }}
             />
           </div>
+
+          {activeFilter && (
+            <button
+              onClick={() => setActiveFilter(null)}
+              className="text-xs px-2 py-0.5 rounded-full transition-colors hover:opacity-70"
+              style={{ background: 'var(--ace-accent)', color: '#fff' }}>
+              {activeFilter} ×
+            </button>
+          )}
 
           <span className="text-xs" style={mutedColor}>
             {filtered.length} track{filtered.length !== 1 ? 's' : ''}
@@ -222,7 +420,6 @@ export function LibraryView({ mode }: { mode: string }) {
             <Grid size={15} />
           </button>
 
-          {/* Open files */}
           <button onClick={handleOpenFiles}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all hover:bg-white/10"
             style={{ color: 'var(--ace-text-secondary)' }}>
@@ -257,36 +454,24 @@ export function LibraryView({ mode }: { mode: string }) {
             <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'var(--ace-bg-elevated)', position: 'sticky', top: 0, zIndex: 10 }}>
-                  {(
-                    [
-                      { key: 'title',      label: 'Title'  },
-                      { key: 'artist',     label: 'Artist' },
-                      { key: 'album',      label: 'Album'  },
-                      { key: 'year',       label: 'Year'   },
-                      { key: 'codec',      label: 'Format' },
-                      { key: 'sampleRate', label: 'SR'     },
-                      { key: 'durationMs', label: 'Time'   },
-                    ] as { key: SortKey; label: string }[]
-                  ).map(({ key, label }) => (
+                  {COLS.map(({ key, label }) => (
                     <th key={key}
                       onClick={() => toggleSort(key)}
-                      className="px-3 py-2 text-left font-semibold cursor-pointer hover:bg-white/5 transition-colors select-none border-b"
+                      className="px-3 py-2 text-left font-semibold cursor-pointer hover:bg-white/5 transition-colors select-none border-b whitespace-nowrap"
                       style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-muted)', userSelect: 'none' }}>
                       <span className="flex items-center gap-1">
                         {label}
-                        {sortKey === key && (
-                          sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />
-                        )}
+                        {sortKey === key && (sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
                       </span>
                     </th>
                   ))}
-                  <th className="w-16 border-b" style={{ borderColor: 'var(--ace-border)' }} />
+                  <th className="w-12 border-b" style={{ borderColor: 'var(--ace-border)' }} />
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((track, idx) => {
                   const isPlaying = track.id === store.currentTrack?.id
-                  const isSel = track.id === selected
+                  const isSel    = track.id === selected
                   return (
                     <tr
                       key={track.id}
@@ -297,29 +482,49 @@ export function LibraryView({ mode }: { mode: string }) {
                         borderColor: 'var(--ace-border)',
                         background: isPlaying
                           ? 'rgba(124,106,255,0.08)'
-                          : isSel
-                            ? 'rgba(255,255,255,0.04)'
-                            : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                          : isSel ? 'rgba(255,255,255,0.04)'
+                          : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
                       }}
                     >
-                      <td className="px-3 py-1.5 max-w-0 truncate" style={{ color: isPlaying ? 'var(--ace-accent)' : 'var(--ace-text-primary)', maxWidth: 220 }}>
-                        {isPlaying && <span className="mr-1 text-xs">▶</span>}
+                      {/* Title */}
+                      <td className="px-3 py-1.5 max-w-[200px] truncate"
+                        style={{ color: isPlaying ? 'var(--ace-accent)' : 'var(--ace-text-primary)' }}>
+                        {isPlaying && <span className="mr-1">▶</span>}
                         {track.title}
                       </td>
-                      <td className="px-3 py-1.5 truncate" style={{ ...mutedColor, maxWidth: 160 }}>{track.artist}</td>
-                      <td className="px-3 py-1.5 truncate" style={{ ...mutedColor, maxWidth: 160 }}>{track.album}</td>
-                      <td className="px-3 py-1.5 tabular-nums" style={mutedColor}>{track.year ?? '—'}</td>
-                      <td className="px-3 py-1.5" style={{ ...mutedColor, fontFamily: 'var(--ace-font-mono)' }}>
+                      {/* Artist */}
+                      <td className="px-3 py-1.5 max-w-[140px] truncate" style={mutedColor}>{track.artist}</td>
+                      {/* Album */}
+                      <td className="px-3 py-1.5 max-w-[140px] truncate" style={mutedColor}>{track.album}</td>
+                      {/* Year */}
+                      <td className="px-3 py-1.5 tabular-nums" style={{ ...mutedColor, fontFamily: 'var(--ace-font-mono)' }}>{track.year ?? '—'}</td>
+                      {/* Format */}
+                      <td className="px-3 py-1.5 whitespace-nowrap" style={{ ...mutedColor, fontFamily: 'var(--ace-font-mono)' }}>
                         {track.codec.toUpperCase()}
-                        {track.bitDepth > 0 && <span className="opacity-60 ml-0.5 text-[10px]"> {track.bitDepth}b</span>}
+                        {track.bitDepth > 0 && <span className="opacity-60 ml-0.5 text-[10px]">{track.bitDepth}b</span>}
                       </td>
-                      <td className="px-3 py-1.5 tabular-nums" style={{ ...mutedColor, fontFamily: 'var(--ace-font-mono)' }}>
+                      {/* SR */}
+                      <td className="px-3 py-1.5 tabular-nums whitespace-nowrap" style={{ ...mutedColor, fontFamily: 'var(--ace-font-mono)' }}>
                         {track.sampleRate > 0 ? formatSampleRate(track.sampleRate) : '—'}
                       </td>
-                      <td className="px-3 py-1.5 tabular-nums" style={{ ...mutedColor, fontFamily: 'var(--ace-font-mono)' }}>
+                      {/* Duration */}
+                      <td className="px-3 py-1.5 tabular-nums whitespace-nowrap" style={{ ...mutedColor, fontFamily: 'var(--ace-font-mono)' }}>
                         {track.durationMs > 0 ? formatDuration(track.durationMs) : '—'}
                       </td>
+                      {/* Play count */}
+                      <td className="px-3 py-1.5 tabular-nums text-center" style={{ ...mutedColor, fontFamily: 'var(--ace-font-mono)' }}>
+                        {track.playCount > 0 ? track.playCount : '—'}
+                      </td>
+                      {/* Rating */}
                       <td className="px-3 py-1.5">
+                        <StarRating
+                          value={ratings[track.id] ?? 0}
+                          onChange={(v) => setRating(track.id, v)}
+                          size={11}
+                        />
+                      </td>
+                      {/* Play button */}
+                      <td className="px-2 py-1.5">
                         <button
                           onClick={(e) => { e.stopPropagation(); handlePlayTrack(track) }}
                           className="p-1 rounded hover:bg-white/10 transition-colors"
@@ -338,7 +543,7 @@ export function LibraryView({ mode }: { mode: string }) {
         {/* Grid view */}
         {tracks.length > 0 && gridView && (
           <div className="flex-1 overflow-auto p-4">
-            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))' }}>
               {filtered.map((track) => {
                 const isPlaying = track.id === store.currentTrack?.id
                 return (
@@ -351,7 +556,6 @@ export function LibraryView({ mode }: { mode: string }) {
                       background: isPlaying ? 'rgba(124,106,255,0.12)' : 'var(--ace-surface)',
                       border: `1px solid ${isPlaying ? 'var(--ace-accent)' : 'var(--ace-border)'}`,
                     }}>
-                    {/* Art placeholder */}
                     <div className="w-full aspect-square rounded-lg mb-2 flex items-center justify-center relative overflow-hidden"
                       style={{ background: 'var(--ace-bg-elevated)' }}>
                       <span style={{ fontSize: 32, color: 'var(--ace-accent)' }}>♪</span>
@@ -361,6 +565,13 @@ export function LibraryView({ mode }: { mode: string }) {
                     </div>
                     <p className="text-xs font-medium truncate" style={trackColor}>{track.title}</p>
                     <p className="text-[10px] truncate mt-0.5" style={mutedColor}>{track.artist}</p>
+                    <div className="mt-1.5">
+                      <StarRating
+                        value={ratings[track.id] ?? 0}
+                        onChange={(v) => setRating(track.id, v)}
+                        size={10}
+                      />
+                    </div>
                   </button>
                 )
               })}
@@ -369,12 +580,12 @@ export function LibraryView({ mode }: { mode: string }) {
         )}
       </div>
 
-      {/* ════════════════ RIGHT: NOW PLAYING PANEL ════════════ */}
+      {/* ══ Right: Now Playing panel ══ */}
       {!techie && store.currentTrack && (
         <div className="w-56 shrink-0 border-l flex flex-col overflow-hidden"
           style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)' }}>
           <div className="px-3 py-2 text-xs uppercase tracking-widest border-b"
-            style={{ ...mutedColor, ...borderLine }}>
+            style={{ color: 'var(--ace-text-muted)', borderColor: 'var(--ace-border)' }}>
             Now Playing
           </div>
 
@@ -390,14 +601,24 @@ export function LibraryView({ mode }: { mode: string }) {
             <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--ace-text-secondary)' }}>{store.currentTrack.artist}</p>
             <p className="text-xs opacity-60 truncate" style={{ color: 'var(--ace-text-secondary)' }}>{store.currentTrack.album}</p>
 
+            {/* Star rating for current track */}
+            <div className="mt-3">
+              <StarRating
+                value={ratings[store.currentTrack.id] ?? 0}
+                onChange={(v) => setRating(store.currentTrack!.id, v)}
+                size={14}
+              />
+            </div>
+
             {/* Technical info */}
-            <div className="mt-4 space-y-1">
-              {[
-                ['Codec',  store.currentTrack.codec.toUpperCase()],
-                ['Rate',   store.currentTrack.sampleRate > 0 ? formatSampleRate(store.currentTrack.sampleRate) : '—'],
-                ['Depth',  store.currentTrack.bitDepth > 0 ? `${store.currentTrack.bitDepth}-bit` : '—'],
+            <div className="mt-3 space-y-1">
+              {([
+                ['Codec',   store.currentTrack.codec.toUpperCase()],
+                ['Rate',    store.currentTrack.sampleRate > 0 ? formatSampleRate(store.currentTrack.sampleRate) : '—'],
+                ['Depth',   store.currentTrack.bitDepth > 0 ? `${store.currentTrack.bitDepth}-bit` : '—'],
                 ['Bitrate', store.currentTrack.bitrateKbps > 0 ? `${store.currentTrack.bitrateKbps} kbps` : 'Lossless'],
-              ].map(([k, v]) => (
+                ['Plays',   String(store.currentTrack.playCount)],
+              ] as [string, string][]).map(([k, v]) => (
                 <div key={k} className="flex justify-between text-xs">
                   <span style={mutedColor}>{k}</span>
                   <span style={{ ...trackColor, fontFamily: 'var(--ace-font-mono)' }}>{v}</span>

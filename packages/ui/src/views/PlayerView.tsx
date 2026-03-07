@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   SkipBack, Play, Pause, SkipForward, Square,
   Repeat, Repeat1, Shuffle, FolderOpen, ListMusic,
+  Star, AlignLeft, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { usePlaybackStore } from '@/store/playbackStore'
@@ -66,6 +67,127 @@ async function openAudioFiles(): Promise<string[]> {
   }
 }
 
+// ── Rating Stars ──────────────────────────────────────────────────────────────
+
+function RatingStars({ value, onChange, size = 16 }: {
+  value: number
+  onChange: (v: number) => void
+  size?: number
+}) {
+  const [hover, setHover] = useState(0)
+  return (
+    <div className="flex items-center gap-0.5" onMouseLeave={() => setHover(0)}>
+      {[1, 2, 3, 4, 5].map(star => (
+        <button
+          key={star}
+          onMouseEnter={() => setHover(star)}
+          onClick={() => onChange(value === star ? 0 : star)}
+          className="transition-transform hover:scale-110"
+        >
+          <Star
+            size={size}
+            fill={(hover || value) >= star ? 'var(--ace-warning)' : 'none'}
+            stroke={(hover || value) >= star ? 'var(--ace-warning)' : 'var(--ace-text-muted)'}
+            strokeWidth={1.5}
+          />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ── Lyrics Panel ──────────────────────────────────────────────────────────────
+
+interface LrcLine {
+  timeMs: number
+  text: string
+}
+
+/** Parse [mm:ss.xx] lines from LRC content */
+function parseLrc(content: string): LrcLine[] {
+  const lines: LrcLine[] = []
+  for (const raw of content.split('\n')) {
+    const match = raw.match(/^\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.*)$/)
+    if (match) {
+      const min = parseInt(match[1], 10)
+      const sec = parseInt(match[2], 10)
+      const ms = match[3] ? parseInt(match[3].padEnd(3, '0'), 10) : 0
+      lines.push({ timeMs: min * 60000 + sec * 1000 + ms, text: match[4] })
+    }
+  }
+  return lines.sort((a, b) => a.timeMs - b.timeMs)
+}
+
+const DEMO_LRC = `[00:00.00] 
+[00:04.50] No lyrics loaded
+[00:08.00] Play a track with an .lrc file
+[00:12.00] or paste synced lyrics here
+[00:16.00] Format: [mm:ss.xx] text
+[00:20.00] 
+[00:24.00] Lyrics will auto-scroll
+[00:28.00] highlighting the current line
+[00:32.00] as the track plays
+[00:40.00] `
+
+function LyricsPanel({ positionMs, compact }: { positionMs: number; compact?: boolean }) {
+  const [lrcText, setLrcText] = useState(DEMO_LRC)
+  const [editing, setEditing] = useState(false)
+  const lines = useMemo(() => parseLrc(lrcText), [lrcText])
+
+  // Find current line index
+  const activeIdx = useMemo(() => {
+    let idx = 0
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].timeMs <= positionMs) idx = i
+    }
+    return idx
+  }, [lines, positionMs])
+
+  if (editing) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between px-3 py-1.5 border-b" style={{ borderColor: 'var(--ace-border)' }}>
+          <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--ace-text-muted)' }}>Edit Lyrics</span>
+          <button onClick={() => setEditing(false)} className="text-[10px] px-2 py-0.5 rounded" style={{ background: 'var(--ace-accent)', color: '#fff' }}>Done</button>
+        </div>
+        <textarea
+          value={lrcText}
+          onChange={e => setLrcText(e.target.value)}
+          className="flex-1 bg-transparent px-3 py-2 text-xs outline-none resize-none font-mono"
+          style={{ color: 'var(--ace-text-secondary)' }}
+          placeholder="[00:00.00] First line...&#10;[00:04.00] Second line..."
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b" style={{ borderColor: 'var(--ace-border)' }}>
+        <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--ace-text-muted)' }}>Lyrics</span>
+        <button onClick={() => setEditing(true)} className="p-1 rounded hover:bg-white/10 transition-colors" style={{ color: 'var(--ace-text-muted)' }}>
+          <AlignLeft size={11} />
+        </button>
+      </div>
+      <div className={`flex-1 overflow-y-auto ${compact ? 'px-3 py-2' : 'px-5 py-4'}`}>
+        <div className="flex flex-col gap-1">
+          {lines.map((line, i) => (
+            <p
+              key={i}
+              className={`transition-all duration-300 ${compact ? 'text-xs' : 'text-sm'} ${i === activeIdx ? 'font-bold scale-[1.02] origin-left' : 'opacity-40'}`}
+              style={{
+                color: i === activeIdx ? 'var(--ace-accent)' : 'var(--ace-text-secondary)',
+              }}
+            >
+              {line.text || '\u00A0'}
+            </p>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function PlayerView() {
@@ -113,6 +235,8 @@ function BeautifulPlayer() {
   }, [repeat, store])
 
   const noTrack = !currentTrack
+  const [rating, setRating] = useState(0)
+  const [showLyrics, setShowLyrics] = useState(false)
 
   return (
     <div className="relative w-full h-full overflow-hidden select-none">
@@ -169,16 +293,43 @@ function BeautifulPlayer() {
         </div>
       )}
 
-      {/* ── Format badge (top-right) ─────────────────────────── */}
+      {/* ── Format badge + lyrics toggle (top-right) ─────────── */}
       {currentTrack && (
-        <div className="absolute top-8 right-4 px-2.5 py-1 rounded-md text-xs tracking-wide"
+        <div className="absolute top-8 right-4 flex items-center gap-2">
+          <button
+            onClick={() => setShowLyrics(!showLyrics)}
+            className="px-2 py-1 rounded-md text-xs transition-all"
+            style={{
+              background: showLyrics ? 'rgba(124,106,255,0.25)' : 'rgba(0,0,0,0.55)',
+              color: showLyrics ? 'var(--ace-accent)' : 'var(--ace-text-muted)',
+              border: '1px solid rgba(124,106,255,0.25)', backdropFilter: 'blur(8px)',
+            }}
+            title="Toggle Lyrics"
+          >
+            <AlignLeft size={14} />
+          </button>
+          <div className="px-2.5 py-1 rounded-md text-xs tracking-wide"
+            style={{
+              background: 'rgba(0,0,0,0.55)', color: 'var(--ace-accent)',
+              border: '1px solid rgba(124,106,255,0.25)', backdropFilter: 'blur(8px)',
+              fontFamily: 'var(--ace-font-mono)',
+            }}
+          >
+            {formatBadge(currentTrack)}
+          </div>
+        </div>
+      )}
+
+      {/* ── Lyrics overlay ─────────────────────────────────── */}
+      {currentTrack && showLyrics && (
+        <div
+          className="absolute top-20 right-4 bottom-32 w-72 rounded-lg border overflow-hidden"
           style={{
-            background: 'rgba(0,0,0,0.55)', color: 'var(--ace-accent)',
-            border: '1px solid rgba(124,106,255,0.25)', backdropFilter: 'blur(8px)',
-            fontFamily: 'var(--ace-font-mono)',
+            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(20px)',
+            borderColor: 'rgba(124,106,255,0.2)',
           }}
         >
-          {formatBadge(currentTrack)}
+          <LyricsPanel positionMs={positionMs} />
         </div>
       )}
 
@@ -206,7 +357,7 @@ function BeautifulPlayer() {
               <span style={{ fontSize: 22, color: 'var(--ace-accent)' }}>♪</span>
             </div>
 
-            {/* Track info */}
+            {/* Track info + rating */}
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-sm truncate" style={{ color: 'var(--ace-text-primary)' }}>
                 {currentTrack.title}
@@ -214,9 +365,12 @@ function BeautifulPlayer() {
               <p className="text-xs truncate mt-0.5" style={{ color: 'var(--ace-text-secondary)' }}>
                 {currentTrack.artist}
               </p>
-              <p className="text-xs truncate opacity-55" style={{ color: 'var(--ace-text-secondary)' }}>
-                {currentTrack.album}
-              </p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-xs truncate opacity-55" style={{ color: 'var(--ace-text-secondary)' }}>
+                  {currentTrack.album}
+                </p>
+                <RatingStars value={rating} onChange={setRating} size={12} />
+              </div>
             </div>
 
             {/* Time */}
@@ -314,6 +468,8 @@ function TechiePlayer() {
     store.setRepeat(repeat === 'none' ? 'all' : repeat === 'all' ? 'one' : 'none')
   }, [repeat, store])
 
+  const [techieRating, setTechieRating] = useState(0)
+
   const t = currentTrack
   const monoFont: React.CSSProperties = { fontFamily: 'var(--ace-font-mono)', fontSize: 12 }
 
@@ -389,16 +545,37 @@ function TechiePlayer() {
         {/* ── Right: metadata panels ──────────────────────── */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex flex-1 min-h-0">
-            {/* Metadata */}
+            {/* Metadata + Rating */}
             <div className="flex-1 border-r overflow-auto" style={{ borderColor: 'var(--ace-border)' }}>
               <PanelHeader title="Metadata" />
-              {metaRows.length > 0
-                ? <InfoTable rows={metaRows} />
-                : <div className="p-3 text-xs" style={{ color: 'var(--ace-text-muted)' }}>No track loaded. Open a file to begin.</div>
-              }
+              {metaRows.length > 0 ? (
+                <>
+                  <InfoTable rows={metaRows} />
+                  {/* Rating row */}
+                  <div className="flex items-center gap-2 px-3 py-1.5 border-b" style={{ borderColor: 'var(--ace-border)' }}>
+                    <span className="text-xs w-28" style={{ color: 'var(--ace-text-muted)', fontFamily: 'var(--ace-font-mono)' }}>Rating</span>
+                    <RatingStars value={techieRating} onChange={setTechieRating} size={14} />
+                  </div>
+                </>
+              ) : (
+                <div className="p-3 text-xs" style={{ color: 'var(--ace-text-muted)' }}>No track loaded. Open a file to begin.</div>
+              )}
             </div>
+
+            {/* Lyrics */}
+            <div className="w-52 shrink-0 border-r overflow-hidden" style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg)' }}>
+              {t ? (
+                <LyricsPanel positionMs={positionMs} compact />
+              ) : (
+                <>
+                  <PanelHeader title="Lyrics" />
+                  <div className="p-3 text-xs" style={{ color: 'var(--ace-text-muted)' }}>Lyrics appear here.</div>
+                </>
+              )}
+            </div>
+
             {/* File info */}
-            <div className="w-64 shrink-0 overflow-auto">
+            <div className="w-56 shrink-0 overflow-auto">
               {fileRows.length > 0 && (<><PanelHeader title="Location" /><InfoTable rows={fileRows} /></>)}
               {techRows.length > 0 && (<><PanelHeader title="General" /><InfoTable rows={techRows} /></>)}
               {!t && <div className="p-3 text-xs" style={{ color: 'var(--ace-text-muted)' }}>File details appear here.</div>}
