@@ -68,7 +68,7 @@ export function AppShell() {
       <motion.aside
         animate={{ width: sidebarOpen ? 220 : 64 }}
         transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-        className="relative flex-shrink-0 flex flex-col pt-10 pb-4"
+        className="relative shrink-0 flex flex-col pt-10 pb-4"
         style={{
           background: 'var(--ace-bg-elevated)',
           borderRight: '1px solid var(--ace-border)',
@@ -77,7 +77,7 @@ export function AppShell() {
         {/* Logo */}
         <div className="px-4 mb-6 flex items-center gap-3 overflow-hidden">
           <div
-            className="w-8 h-8 flex-shrink-0 rounded-lg flex items-center justify-center ace-glow"
+            className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center ace-glow"
             style={{ background: 'var(--ace-accent)' }}
           >
             <Music2 size={16} style={{ color: '#fff' }} />
@@ -115,7 +115,7 @@ export function AppShell() {
                   : { color: 'var(--ace-text-secondary)' }
               }
             >
-              <Icon size={16} className="flex-shrink-0" />
+              <Icon size={16} className="shrink-0" />
               {sidebarOpen && (
                 <span className="text-sm font-medium whitespace-nowrap">{label}</span>
               )}
