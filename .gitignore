@@ -1,0 +1,50 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+out
+.next
+build
+
+# Tauri / Rust
+src-tauri/target
+*.node
+
+# C++ build artifacts
+packages/audio-engine/build
+packages/audio-engine/cmake-build-*
+**/*.o
+**/*.a
+**/*.so
+**/*.dylib
+**/*.dll
+**/*.lib
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/settings.json
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+turbo/
+
+# Tauri
+**/WixTools
+
+# Android
+apps/android/android/.gradle
+apps/android/android/app/build
+apps/android/android/local.properties

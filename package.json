@@ -1,0 +1,29 @@
+{
+  "name": "audiophile-ace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Audiophile Ace — Multifunctional Hi-Fi Audio Tool",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "clean": "turbo run clean",
+    "desktop:dev": "turbo run dev --filter=@ace/desktop",
+    "linux:dev": "turbo run dev --filter=@ace/linux",
+    "android:dev": "turbo run dev --filter=@ace/android",
+    "desktop:build": "turbo run build --filter=@ace/desktop",
+    "linux:build": "turbo run build --filter=@ace/linux",
+    "android:build": "turbo run build --filter=@ace/android"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "prettier": "^3.4.2",
+    "eslint": "^9.18.0"
+  },
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

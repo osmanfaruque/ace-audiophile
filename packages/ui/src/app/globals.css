@@ -1,0 +1,147 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   Audiophile Ace — Design Tokens
+   All values flow through CSS variables so the dual UI mode
+   (beautiful / techie) can be switched at runtime.
+───────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Palette ─────────────────────────────── */
+  --ace-bg:            #0a0a0f;
+  --ace-bg-elevated:   #111118;
+  --ace-bg-overlay:    #1a1a24;
+  --ace-surface:       #1e1e2a;
+  --ace-border:        #2a2a3a;
+  --ace-border-strong: #3a3a50;
+
+  --ace-text-primary:   #f0f0f8;
+  --ace-text-secondary: #a0a0c0;
+  --ace-text-muted:     #606080;
+
+  --ace-accent:        #7c6aff;   /* purple-ish, audiophile feel */
+  --ace-accent-dim:    #3d3580;
+  --ace-accent-glow:   #7c6aff33;
+
+  --ace-success:       #4caf82;
+  --ace-warning:       #f5a623;
+  --ace-danger:        #e5534b;
+  --ace-info:          #4fa3e0;
+
+  /* ── Spacing scale ──────────────────────── */
+  --ace-radius-sm:  4px;
+  --ace-radius-md:  8px;
+  --ace-radius-lg:  16px;
+  --ace-radius-xl:  24px;
+  --ace-radius-full: 9999px;
+
+  /* ── Typography ─────────────────────────── */
+  --ace-font-sans:  'Inter Variable', 'Inter', system-ui, sans-serif;
+  --ace-font-mono:  'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+
+  /* ── Animation ──────────────────────────── */
+  --ace-transition-fast:   120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --ace-transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --ace-transition-slow:   400ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── VU Meter colors ────────────────────── */
+  --vu-safe:   #4caf82;
+  --vu-warn:   #f5a623;
+  --vu-clip:   #e5534b;
+}
+
+/* Techie mode overrides — slightly more clinical, less warm */
+[data-ui-mode="techie"] {
+  --ace-accent:     #00d4ff;
+  --ace-accent-dim: #006680;
+  --ace-accent-glow: #00d4ff33;
+  --ace-bg:         #050508;
+  --ace-font-sans:  var(--ace-font-mono);
+}
+
+/* AMOLED scheme — true black */
+[data-color-scheme="amoled"] {
+  --ace-bg:           #000000;
+  --ace-bg-elevated:  #080808;
+  --ace-bg-overlay:   #101010;
+  --ace-surface:      #141414;
+}
+
+/* Light scheme */
+[data-color-scheme="light"] {
+  --ace-bg:            #f5f5fa;
+  --ace-bg-elevated:   #ffffff;
+  --ace-bg-overlay:    #ebebf5;
+  --ace-surface:       #e8e8f0;
+  --ace-border:        #d0d0e0;
+  --ace-border-strong: #b0b0cc;
+  --ace-text-primary:  #0a0a18;
+  --ace-text-secondary:#404060;
+  --ace-text-muted:    #8080a0;
+}
+
+/* ─── Reset & base ───────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background: var(--ace-bg);
+  color: var(--ace-text-primary);
+  font-family: var(--ace-font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;       /* Tauri window — no OS scroll bars */
+}
+
+/* Custom scrollbar — subtle */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--ace-border-strong);
+  border-radius: var(--ace-radius-full);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--ace-accent-dim); }
+
+/* Focus rings */
+:focus-visible {
+  outline: 2px solid var(--ace-accent);
+  outline-offset: 2px;
+  border-radius: var(--ace-radius-sm);
+}
+
+/* Tauri drag region (title bar drag) */
+.tauri-drag-region {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.tauri-no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* ─── Utility classes ───────────────────────────────────── */
+.font-mono { font-family: var(--ace-font-mono); }
+.text-accent { color: var(--ace-accent); }
+.text-muted  { color: var(--ace-text-muted); }
+.text-secondary { color: var(--ace-text-secondary); }
+.bg-surface { background: var(--ace-surface); }
+.border-default { border-color: var(--ace-border); }
+
+/* Glassmorphism card */
+.glass {
+  background: color-mix(in srgb, var(--ace-surface) 80%, transparent);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--ace-border);
+}
+
+/* Glow effect for accent elements */
+.ace-glow {
+  box-shadow: 0 0 20px var(--ace-accent-glow), 0 0 60px var(--ace-accent-glow);
+}
