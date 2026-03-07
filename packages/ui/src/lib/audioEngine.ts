@@ -15,7 +15,7 @@ import type { DspChainState, AudioDevice, FftFrame, LevelMeter, AudioTrack, File
 
 // Dynamically imported to avoid build errors in non-Tauri environments
 let tauriInvoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null
-let tauriListen: ((event: string, handler: (event: { payload: unknown }) => void) => Promise<() => void>) | null = null
+let tauriListen: (<T>(event: string, handler: (event: { payload: T }) => void) => Promise<() => void>) | null = null
 
 async function loadTauri() {
   if (tauriInvoke) return
