@@ -220,7 +220,7 @@ function GearListItem({ gear, selected, onClick }: {
       className={cn(
         'w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors border-l-2',
         selected
-          ? 'border-l-[var(--ace-accent)] bg-[var(--ace-accent)]/8'
+          ? 'border-l-(--ace-accent) bg-(--ace-accent)/8'
           : 'border-l-transparent hover:bg-white/5',
       )}
     >
@@ -351,14 +351,14 @@ export function GearView() {
         <div className="flex rounded overflow-hidden border" style={{ borderColor: 'var(--ace-border)' }}>
           <button
             onClick={() => setShowCorrection(false)}
-            className={cn('px-3 py-1 text-[10px] font-medium transition-colors', !showCorrection ? 'bg-[var(--ace-accent)]/15 text-[var(--ace-accent)]' : 'hover:bg-white/5')}
+            className={cn('px-3 py-1 text-[10px] font-medium transition-colors', !showCorrection ? 'bg-(--ace-accent)/15 text-(--ace-accent)' : 'hover:bg-white/5')}
             style={{ color: !showCorrection ? undefined : 'var(--ace-text-muted)' }}
           >
             FR Curve
           </button>
           <button
             onClick={() => setShowCorrection(true)}
-            className={cn('px-3 py-1 text-[10px] font-medium transition-colors', showCorrection ? 'bg-[var(--ace-accent)]/15 text-[var(--ace-accent)]' : 'hover:bg-white/5')}
+            className={cn('px-3 py-1 text-[10px] font-medium transition-colors', showCorrection ? 'bg-(--ace-accent)/15 text-(--ace-accent)' : 'hover:bg-white/5')}
             style={{ color: showCorrection ? undefined : 'var(--ace-text-muted)' }}
           >
             Correction
@@ -393,7 +393,7 @@ export function GearView() {
           <div className="flex flex-wrap gap-1 px-2 py-1.5 border-b" style={{ borderColor: 'var(--ace-border)' }}>
             <button
               onClick={() => setFilterType('all')}
-              className={cn('px-2 py-0.5 rounded text-[10px] font-medium transition-colors', filterType === 'all' ? 'bg-[var(--ace-accent)]/15 text-[var(--ace-accent)]' : '')}
+              className={cn('px-2 py-0.5 rounded text-[10px] font-medium transition-colors', filterType === 'all' ? 'bg-(--ace-accent)/15 text-(--ace-accent)' : '')}
               style={{ color: filterType === 'all' ? undefined : 'var(--ace-text-muted)' }}
             >
               All
@@ -402,7 +402,7 @@ export function GearView() {
               <button
                 key={t.value}
                 onClick={() => setFilterType(t.value)}
-                className={cn('px-2 py-0.5 rounded text-[10px] font-medium transition-colors', filterType === t.value ? 'bg-[var(--ace-accent)]/15 text-[var(--ace-accent)]' : '')}
+                className={cn('px-2 py-0.5 rounded text-[10px] font-medium transition-colors', filterType === t.value ? 'bg-(--ace-accent)/15 text-(--ace-accent)' : '')}
                 style={{ color: filterType === t.value ? undefined : 'var(--ace-text-muted)' }}
               >
                 {t.label}

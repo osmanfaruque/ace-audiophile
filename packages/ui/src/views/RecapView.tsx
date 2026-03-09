@@ -164,7 +164,7 @@ function HourlyHeatmap({ data }: { data: number[] }) {
   const max = Math.max(...data, 1)
   return (
     <div>
-      <div className="flex gap-[3px]">
+      <div className="flex gap-0.75">
         {data.map((v, h) => {
           const intensity = v / max
           return (
@@ -253,7 +253,7 @@ function CalendarHeatmap({ data }: { data: { date: string; totalMs: number }[] }
 
       <div className="flex gap-0.5 mt-3">
         {/* Day labels */}
-        <div className="flex flex-col gap-[2px] mr-1" style={{ width: '16px' }}>
+        <div className="flex flex-col gap-0.5 mr-1" style={{ width: '16px' }}>
           {['', 'Mon', '', 'Wed', '', 'Fri', ''].map((d, i) => (
             <div key={i} className="text-[8px] leading-none" style={{ height: `${cellSize}px`, color: 'var(--ace-text-muted)', display: 'flex', alignItems: 'center' }}>
               {d}
@@ -263,14 +263,14 @@ function CalendarHeatmap({ data }: { data: { date: string; totalMs: number }[] }
 
         {/* Cells */}
         {weeks.map((week, wi) => (
-          <div key={wi} className="flex flex-col gap-[2px]">
+          <div key={wi} className="flex flex-col gap-0.5">
             {week.map((day, di) => {
               if (!day.date) return <div key={di} style={{ width: cellSize, height: cellSize }} />
               const intensity = day.totalMs / max
               return (
                 <div
                   key={di}
-                  className="rounded-[2px] transition-colors"
+                  className="rounded-xs transition-colors"
                   style={{
                     width: cellSize,
                     height: cellSize,
@@ -292,7 +292,7 @@ function CalendarHeatmap({ data }: { data: { date: string; totalMs: number }[] }
         {[0, 0.2, 0.4, 0.6, 0.8, 1].map((v, i) => (
           <div
             key={i}
-            className="rounded-[2px]"
+            className="rounded-xs"
             style={{
               width: cellSize,
               height: cellSize,
@@ -434,8 +434,8 @@ export function RecapView() {
             className={cn(
               'px-4 py-2.5 text-xs font-medium border-b-2 transition-colors',
               tab === t.id
-                ? 'border-[var(--ace-accent)]'
-                : 'border-transparent hover:border-[var(--ace-border-strong)]',
+                ? 'border-(--ace-accent)'
+                : 'border-transparent hover:border-(--ace-border-strong)',
             )}
             style={{ color: tab === t.id ? 'var(--ace-text-primary)' : 'var(--ace-text-muted)' }}
           >

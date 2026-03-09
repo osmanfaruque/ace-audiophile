@@ -477,7 +477,7 @@ export function LibraryView({ mode }: { mode: string }) {
                       key={track.id}
                       onClick={() => setSelected(track.id)}
                       onDoubleClick={() => handlePlayTrack(track)}
-                      className="border-b cursor-pointer transition-colors hover:bg-white/[0.04]"
+                      className="border-b cursor-pointer transition-colors hover:bg-white/4"
                       style={{
                         borderColor: 'var(--ace-border)',
                         background: isPlaying
@@ -487,15 +487,15 @@ export function LibraryView({ mode }: { mode: string }) {
                       }}
                     >
                       {/* Title */}
-                      <td className="px-3 py-1.5 max-w-[200px] truncate"
+                      <td className="px-3 py-1.5 max-w-50 truncate"
                         style={{ color: isPlaying ? 'var(--ace-accent)' : 'var(--ace-text-primary)' }}>
                         {isPlaying && <span className="mr-1">▶</span>}
                         {track.title}
                       </td>
                       {/* Artist */}
-                      <td className="px-3 py-1.5 max-w-[140px] truncate" style={mutedColor}>{track.artist}</td>
+                      <td className="px-3 py-1.5 max-w-35 truncate" style={mutedColor}>{track.artist}</td>
                       {/* Album */}
-                      <td className="px-3 py-1.5 max-w-[140px] truncate" style={mutedColor}>{track.album}</td>
+                      <td className="px-3 py-1.5 max-w-35 truncate" style={mutedColor}>{track.album}</td>
                       {/* Year */}
                       <td className="px-3 py-1.5 tabular-nums" style={{ ...mutedColor, fontFamily: 'var(--ace-font-mono)' }}>{track.year ?? '—'}</td>
                       {/* Format */}

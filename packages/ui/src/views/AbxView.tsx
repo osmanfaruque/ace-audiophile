@@ -498,7 +498,7 @@ export function AbxView() {
                       onClick={() => setTotalTrials(n)}
                       className={cn(
                         'px-3 py-1.5 rounded text-xs font-medium border transition-colors',
-                        totalTrials === n ? 'border-[var(--ace-accent)] bg-[var(--ace-accent)]/10' : 'border-[var(--ace-border)] hover:bg-white/5',
+                        totalTrials === n ? 'border-(--ace-accent) bg-(--ace-accent)/10' : 'border-(--ace-border) hover:bg-white/5',
                       )}
                       style={{ color: totalTrials === n ? 'var(--ace-accent)' : 'var(--ace-text-secondary)' }}
                     >
@@ -517,7 +517,7 @@ export function AbxView() {
                   onClick={() => setSealed(!sealed)}
                   className={cn(
                     'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs border transition-colors',
-                    sealed ? 'border-[var(--ace-warning)] bg-[var(--ace-warning)]/10' : 'border-[var(--ace-border)] hover:bg-white/5',
+                    sealed ? 'border-(--ace-warning) bg-(--ace-warning)/10' : 'border-(--ace-border) hover:bg-white/5',
                   )}
                   style={{ color: sealed ? 'var(--ace-warning)' : 'var(--ace-text-secondary)' }}
                 >
@@ -526,7 +526,7 @@ export function AbxView() {
                 </button>
               </div>
 
-              <p className="text-[10px] pl-[7.5rem]" style={{ color: 'var(--ace-text-muted)' }}>
+              <p className="text-[10px] pl-30" style={{ color: 'var(--ace-text-muted)' }}>
                 {sealed
                   ? 'True double-blind: no feedback during test. Results revealed after all trials.'
                   : 'You see correct/wrong after each trial. Faster iteration but mild bias risk.'}

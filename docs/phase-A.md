@@ -20,6 +20,7 @@
 - [ ] **A1.2.3** Format negotiation — match native sample rate / bit depth
 - [ ] **A1.2.4** Shared-mode fallback when exclusive denied
 - [ ] **A1.2.5** `IMMNotificationClient` hot-plug detection
+- [ ] **A1.2.6** USB DAC direct-path verification (bit-perfect chain validation with test tone hash)
 
 ### A1.3 DSP Chain
 
@@ -28,6 +29,12 @@
 - [ ] **A1.3.3** Crossfeed — Bauer binaural stereo-to-stereo
 - [ ] **A1.3.4** Polyphase resampler — libsoxr integration
 - [ ] **A1.3.5** TPDF dither + noise shaping (16-bit / 24-bit output)
+- [ ] **A1.3.6** Virtual surround / spatializer module toggle (desktop-only DSP stage)
+- [ ] **A1.3.7** ReplayGain pipeline (track/album mode with true-peak safety)
+- [ ] **A1.3.8** Limiter + anti-clip guard after DSP chain
+- [ ] **A1.3.9** Convolver slot (FIR impulse response loader, optional)
+- [ ] **A1.3.10** Channel mixer matrix (L/R swap, mono sum, balance, polarity invert)
+- [ ] **A1.3.11** Crossfade engine (configurable overlap, equal-power curve, optional gapless)
 
 ### A1.4 Flat C API (`ace_engine.h`)
 
@@ -103,6 +110,8 @@
 - [ ] **A3.3.2** EqualizerView drag → `ace_set_eq_band` per band
 - [ ] **A3.3.3** SeekBar → `ace_seek`, VolumeSlider → `ace_set_volume`
 - [ ] **A3.3.4** SMTC (System Media Transport Controls) update on track change
+- [ ] **A3.3.5** Preset bank manager (large preset catalog + import/export)
+- [ ] **A3.3.6** DSP profile stack UI (quick toggle between "Neutral", "Analytical", "Fun")
 
 ---
 
@@ -125,6 +134,14 @@
 
 - [ ] **A4.3.1** LibraryView wired to real scan data (replace mock tracks)
 - [ ] **A4.3.2** Album art displayed from cache in PlayerView
+
+### A4.4 Metadata Editing + AutoTag
+
+- [ ] **A4.4.1** Tag write-back engine (FLAC Vorbis, ID3v2.4, MP4 atoms)
+- [ ] **A4.4.2** Batch metadata editor (multi-select apply rules)
+- [ ] **A4.4.3** AcoustID fingerprint generation and lookup
+- [ ] **A4.4.4** MusicBrainz metadata fetch and confidence scoring
+- [ ] **A4.4.5** Cover Art Archive fetch + embed into file tags
 
 ---
 
@@ -151,6 +168,8 @@
 - [ ] **A5.3.2** RecapView → real `listening_events` data
 - [ ] **A5.3.3** PlayerView star ratings → persist to `ratings` table
 - [ ] **A5.3.4** LibraryView sort / filter → SQL queries
+- [ ] **A5.3.5** Yearly recap generator + PNG share card export
+- [ ] **A5.3.6** Session-level stats (skips, repeats, peak listening hour)
 
 ---
 
@@ -194,6 +213,7 @@
 
 - [ ] **A7.1.1** STFT: Hann window, 50% overlap, 2048-point
 - [ ] **A7.1.2** Per-channel spectrogram ring buffer
+- [ ] **A7.1.3** Mid/Side and merged/unmerged channel spectrogram toggle
 
 ### A7.2 Analysis Functions (`ace_analyze_file`)
 
@@ -207,6 +227,9 @@
   - [ ] **A7.2.4.2** Codec chain sniffing (container metadata)
 - [ ] **A7.2.5** DC offset measurement (mean of all samples)
 - [ ] **A7.2.6** Clipping detection (consecutive full-scale sample runs)
+- [ ] **A7.2.7** Container/chunk inspector (RIFF/IFF/ID3/Vorbis block structure)
+- [ ] **A7.2.8** Binary data viewer (hex + bit-plane preview for padded-bit-depth detection)
+- [ ] **A7.2.9** Data-alignment validator (chunk boundary/padding consistency checks)
 
 ### A7.3 Integration
 
@@ -215,6 +238,17 @@
 - [ ] **A7.3.3** Real-time spectrogram via `fft-frame` events → canvas heat-map
 - [ ] **A7.3.4** ABX: sample-perfect A/B gapless switching
 - [ ] **A7.3.5** Export analysis report as JSON
+- [ ] **A7.3.6** Double-blind ABX mode where mapping key stays hidden during session
+- [ ] **A7.3.7** Single-blind ABX mode with post-session answer reveal
+- [ ] **A7.3.8** ABX session export: JSON + CSV with timestamp/reaction-time log
+- [ ] **A7.3.9** Multi-file blind playlist mode (2-3 versions randomized per session)
+- [ ] **A7.3.10** Linear frequency-energy graph view alongside spectrogram
+
+### A7.4 Mastering Comparison
+
+- [ ] **A7.4.1** Load two versions of same track and auto-time-align (cross-correlation)
+- [ ] **A7.4.2** Side-by-side DR/LUFS/True Peak comparison
+- [ ] **A7.4.3** Spectral delta overlay (difference heat-map)
 
 ---
 
@@ -225,6 +259,7 @@
 - [ ] **A8.1.1** AutoEQ CSV parser (frequency + SPL columns)
 - [ ] **A8.1.2** REW `.txt` measurement export parser
 - [ ] **A8.1.3** Validation + log-scale interpolation (1/24-octave grid)
+- [ ] **A8.1.4** squig.link profile import (IEM/TWS FR source adapter)
 
 ### A8.2 Target Curve Library (built-in data)
 
@@ -244,6 +279,7 @@
 
 - [ ] **A8.4.1** CSV import → compute correction → overlay in FR chart
 - [ ] **A8.4.2** "Apply to PEQ" → `dspStore` + `ace_set_eq_band` for all 60 bands
+- [ ] **A8.4.3** Local-only tuning scope toggle (apply inside app only, easy bypass)
 
 ---
 
@@ -261,6 +297,7 @@
 - [ ] **A9.2.2** `/track/getFileUrl` — authenticated stream URL
 - [ ] **A9.2.3** `/user/getFavoriteAlbums` + `getTracks`
 - [ ] **A9.2.4** Rate limiting + retry with exponential backoff
+- [ ] **A9.2.5** Streaming-provider abstraction layer (prepare additional services after Qobuz)
 
 ### A9.3 Unified AudioTrack
 
@@ -282,10 +319,17 @@
 
 - [ ] **A9.6.1** Streaming tab in LibraryView (or dedicated StreamingView)
 - [ ] **A9.6.2** Quality selector (MP3 320 / FLAC 16-44 / Hi-Res 24-192)
+- [ ] **A9.6.3** Provider-aware source filter in Library/Radio surface
 
 ### A9.7 System Integration
 
 - [ ] **A9.7.1** SMTC streaming track metadata (title, artist, album art on lock screen)
+
+### A9.8 Multi-Service Readiness
+
+- [ ] **A9.8.1** Unified service adapter interface (`search`, `resolveTrack`, `resolveStreamUrl`)
+- [ ] **A9.8.2** Account switcher UX for multiple providers (future-safe)
+- [ ] **A9.8.3** Graceful provider fallback when service unavailable
 
 ---
 
@@ -299,4 +343,19 @@
 6. Analyzer produces real LUFS/DR/hi-res verdicts
 7. Auto-EQ imports CSV, computes correction, applies to PEQ
 8. Qobuz streams Hi-Res track end-to-end
-9. All views wired to real data (no mock data remaining)
+9. File inspector shows chunk map + binary/hex-level evidence for upsampled/padded files
+10. Mastering comparison and double-blind ABX both functional
+11. All views wired to real data (no mock data remaining)
+
+---
+
+## Execution Rule (ID-Driven)
+
+Execution order is defined directly by task IDs.
+
+1. Complete by major block order: `A1` → `A2` → `A3` → ... → `A9`
+2. Inside each block, complete in ascending numeric order:
+  `A1.1` before `A1.2`, `A1.2` before `A1.3`, etc.
+3. Inside each subsection, complete leaf tasks in ascending order:
+  `A1.3.1` → `A1.3.2` → ... → `A1.3.11`
+4. If any dependency conflict appears, add a new item with the next available index (do not renumber completed IDs).

@@ -172,7 +172,7 @@ function SmartRulesEditor({ rules, onChange }: { rules: SmartPlaylistRule[]; onC
             value={String(rule.value)}
             onChange={(e) => update(i, { value: e.target.value })}
             placeholder="value"
-            className="flex-1 min-w-[80px] text-xs px-2 py-1 rounded outline-none"
+            className="flex-1 min-w-20 text-xs px-2 py-1 rounded outline-none"
             style={{ background: 'var(--ace-bg-elevated)', color: 'var(--ace-text-primary)', border: '1px solid var(--ace-border)' }}
           />
           <button onClick={() => remove(i)} className="p-1 rounded hover:opacity-70" style={{ color: 'var(--ace-text-muted)' }}>
@@ -202,7 +202,7 @@ function DraggableTrackRow({
       onDragStart={() => onDragStart(index)}
       onDragOver={(e) => { e.preventDefault(); onDragOver(e) }}
       onDrop={() => onDrop(index)}
-      className="border-b group cursor-grab active:cursor-grabbing transition-colors hover:bg-white/[0.04]"
+      className="border-b group cursor-grab active:cursor-grabbing transition-colors hover:bg-white/4"
       style={{ borderColor: 'var(--ace-border)', background: isPlaying ? 'rgba(124,106,255,0.08)' : 'transparent' }}
     >
       <td className="px-2 py-1.5 w-8 text-center">
@@ -211,12 +211,12 @@ function DraggableTrackRow({
       <td className="px-2 py-1.5 w-8 text-center tabular-nums text-xs" style={{ color: 'var(--ace-text-muted)' }}>
         {isPlaying ? <span style={{ color: 'var(--ace-accent)' }}>▶</span> : index + 1}
       </td>
-      <td className="px-3 py-1.5 max-w-[200px] truncate text-xs"
+      <td className="px-3 py-1.5 max-w-50 truncate text-xs"
         style={{ color: isPlaying ? 'var(--ace-accent)' : 'var(--ace-text-primary)' }}>
         {track.title}
       </td>
-      <td className="px-3 py-1.5 max-w-[140px] truncate text-xs" style={{ color: 'var(--ace-text-muted)' }}>{track.artist}</td>
-      <td className="px-3 py-1.5 max-w-[140px] truncate text-xs" style={{ color: 'var(--ace-text-muted)' }}>{track.album}</td>
+      <td className="px-3 py-1.5 max-w-35 truncate text-xs" style={{ color: 'var(--ace-text-muted)' }}>{track.artist}</td>
+      <td className="px-3 py-1.5 max-w-35 truncate text-xs" style={{ color: 'var(--ace-text-muted)' }}>{track.album}</td>
       <td className="px-3 py-1.5 text-xs tabular-nums" style={{ color: 'var(--ace-text-muted)', fontFamily: 'var(--ace-font-mono)' }}>
         {track.durationMs > 0 ? formatDuration(track.durationMs) : '—'}
       </td>
@@ -343,7 +343,7 @@ export function PlaylistsView() {
               <div
                 key={playlist.id}
                 onClick={() => plStore.setActive(playlist.id)}
-                className="flex items-center gap-2 px-3 py-2 border-b cursor-pointer group transition-colors hover:bg-white/[0.04]"
+                className="flex items-center gap-2 px-3 py-2 border-b cursor-pointer group transition-colors hover:bg-white/4"
                 style={{
                   borderColor: 'var(--ace-border)',
                   background: isActive ? 'rgba(124,106,255,0.08)' : 'transparent',

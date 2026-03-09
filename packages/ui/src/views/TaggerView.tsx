@@ -137,7 +137,7 @@ function TagFieldRow({ label, value, onChange, placeholder, multiline, readonly 
           placeholder={placeholder}
           readOnly={readonly}
           rows={3}
-          className="flex-1 bg-transparent border rounded px-2 py-1 text-xs resize-y outline-none focus:border-[var(--ace-accent)] transition-colors"
+          className="flex-1 bg-transparent border rounded px-2 py-1 text-xs resize-y outline-none focus:border-(--ace-accent) transition-colors"
           style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-primary)' }}
         />
       ) : (
@@ -147,7 +147,7 @@ function TagFieldRow({ label, value, onChange, placeholder, multiline, readonly 
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
           readOnly={readonly}
-          className="flex-1 bg-transparent border rounded px-2 py-1.5 text-xs outline-none focus:border-[var(--ace-accent)] transition-colors"
+          className="flex-1 bg-transparent border rounded px-2 py-1.5 text-xs outline-none focus:border-(--ace-accent) transition-colors"
           style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-primary)' }}
         />
       )}
@@ -169,7 +169,7 @@ function FileListItem({ file, selected, onClick }: {
       className={cn(
         'w-full flex items-center gap-2 px-3 py-2 text-left transition-colors border-l-2',
         selected
-          ? 'border-l-[var(--ace-accent)] bg-[var(--ace-accent)]/8'
+          ? 'border-l-(--ace-accent) bg-(--ace-accent)/8'
           : 'border-l-transparent hover:bg-white/5',
       )}
     >
@@ -183,7 +183,7 @@ function FileListItem({ file, selected, onClick }: {
         </div>
       </div>
       {file.dirty && (
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--ace-warning)] shrink-0" />
+        <span className="w-1.5 h-1.5 rounded-full bg-(--ace-warning) shrink-0" />
       )}
     </button>
   )
@@ -327,7 +327,7 @@ function MusicBrainzPanel({ fields, onApply }: {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           placeholder="Search by title, artist, or album..."
-          className="flex-1 bg-transparent border rounded px-2 py-1.5 text-xs outline-none focus:border-[var(--ace-accent)] transition-colors"
+          className="flex-1 bg-transparent border rounded px-2 py-1.5 text-xs outline-none focus:border-(--ace-accent) transition-colors"
           style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-primary)' }}
         />
         <button
@@ -613,8 +613,8 @@ export function TaggerView() {
                   className={cn(
                     'px-4 py-2.5 text-xs font-medium border-b-2 transition-colors',
                     activePanel === p.id
-                      ? 'border-[var(--ace-accent)]'
-                      : 'border-transparent hover:border-[var(--ace-border-strong)]',
+                      ? 'border-(--ace-accent)'
+                      : 'border-transparent hover:border-(--ace-border-strong)',
                   )}
                   style={{
                     color: activePanel === p.id ? 'var(--ace-text-primary)' : 'var(--ace-text-muted)',
@@ -622,7 +622,7 @@ export function TaggerView() {
                 >
                   {p.label}
                   {p.id === 'tags' && selected.dirty && (
-                    <span className="ml-1.5 w-1.5 h-1.5 inline-block rounded-full bg-[var(--ace-warning)]" />
+                    <span className="ml-1.5 w-1.5 h-1.5 inline-block rounded-full bg-(--ace-warning)" />
                   )}
                 </button>
               ))}
@@ -691,7 +691,7 @@ export function TaggerView() {
                         value={selected.edited.totalTracks}
                         onChange={e => updateField('totalTracks', e.target.value)}
                         placeholder="of"
-                        className="w-full bg-transparent border rounded px-2 py-1.5 text-xs outline-none focus:border-[var(--ace-accent)] transition-colors"
+                        className="w-full bg-transparent border rounded px-2 py-1.5 text-xs outline-none focus:border-(--ace-accent) transition-colors"
                         style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-primary)' }}
                       />
                     </div>
@@ -706,7 +706,7 @@ export function TaggerView() {
                         value={selected.edited.totalDiscs}
                         onChange={e => updateField('totalDiscs', e.target.value)}
                         placeholder="of"
-                        className="w-full bg-transparent border rounded px-2 py-1.5 text-xs outline-none focus:border-[var(--ace-accent)] transition-colors"
+                        className="w-full bg-transparent border rounded px-2 py-1.5 text-xs outline-none focus:border-(--ace-accent) transition-colors"
                         style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-primary)' }}
                       />
                     </div>

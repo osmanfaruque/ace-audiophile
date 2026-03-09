@@ -469,7 +469,7 @@ function TrackInfoStrip({ track }: { track: AudioTrack }) {
       className="flex flex-wrap gap-x-5 gap-y-1 px-4 py-2 border-b text-xs font-mono"
       style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)', color: 'var(--ace-text-secondary)' }}
     >
-      <span className="font-semibold truncate max-w-[200px]" style={{ color: 'var(--ace-text-primary)' }}>
+      <span className="font-semibold truncate max-w-50" style={{ color: 'var(--ace-text-primary)' }}>
         {track.title}
       </span>
       {track.artist && <span style={{ color: 'var(--ace-text-muted)' }}>{track.artist}</span>}
@@ -518,8 +518,8 @@ function OverallScore({ result }: { result: AnalysisResult }) {
       <div>
         <div className="text-base font-bold" style={{ color }}>{label}</div>
         <div className="text-xs" style={{ color: 'var(--ace-text-muted)' }}>
-          {fails > 0 && <span className="text-[var(--ace-danger)]">{fails} fail{fails > 1 ? 's' : ''}  </span>}
-          {warns > 0 && <span className="text-[var(--ace-warning)]">{warns} warning{warns > 1 ? 's' : ''}</span>}
+          {fails > 0 && <span className="text-(--ace-danger)">{fails} fail{fails > 1 ? 's' : ''}  </span>}
+          {warns > 0 && <span className="text-(--ace-warning)">{warns} warning{warns > 1 ? 's' : ''}</span>}
           {fails === 0 && warns === 0 && <span style={{ color: 'var(--ace-success)' }}>All checks passed</span>}
         </div>
       </div>
@@ -718,8 +718,8 @@ export function AnalyzerView() {
                 className={cn(
                   'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors',
                   activeTab === tab.id
-                    ? 'border-[var(--ace-accent)] text-[var(--ace-text-primary)]'
-                    : 'border-transparent hover:border-[var(--ace-border-strong)]',
+                    ? 'border-(--ace-accent) text-(--ace-text-primary)'
+                    : 'border-transparent hover:border-(--ace-border-strong)',
                 )}
                 style={{
                   color: activeTab === tab.id ? 'var(--ace-text-primary)' : 'var(--ace-text-muted)',
