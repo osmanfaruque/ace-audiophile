@@ -1,13 +1,55 @@
 cmake_minimum_required(VERSION 3.22)
-project(ace_engine VERSION 0.1.0 LANGUAGES CXX)
+project(ace_engine VERSION 0.1.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# ── Custom CMake modules ──────────────────────────────────────────────────────
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# ── FFmpeg detection (A1.1.1) ─────────────────────────────────────────────────
+#
+# Priority:
+#   1. System FFmpeg via FindFFmpeg (pkg-config or manual search)
+#   2. FFMPEG_ROOT hint  (e.g.  -DFFMPEG_ROOT=C:/ffmpeg)
+#   3. FetchContent: download pre-built FFmpeg shared libs
+#
+find_package(FFmpeg QUIET)
+
+if(NOT FFmpeg_FOUND)
+    message(STATUS "[ace] System FFmpeg not found – using FetchContent pre-built binaries")
+    include(FetchContent)
+
+    if(WIN32)
+        # BtbN GPL shared build (Windows x86_64)
+        set(_FFMPEG_URL
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip")
+        set(_FFMPEG_HASH "")  # populated after first download; CMake will still work without it
+    else()
+        message(FATAL_ERROR
+            "[ace] No system FFmpeg found and FetchContent pre-built is only automated for Windows. "
+            "Install FFmpeg dev packages or set -DFFMPEG_ROOT=<path>.")
+    endif()
+
+    FetchContent_Declare(ffmpeg_prebuilt
+        URL      "${_FFMPEG_URL}"
+        URL_HASH "${_FFMPEG_HASH}"
+    )
+    FetchContent_MakeAvailable(ffmpeg_prebuilt)
+
+    # Point FFMPEG_ROOT at the fetched tree so FindFFmpeg picks it up.
+    set(FFMPEG_ROOT "${ffmpeg_prebuilt_SOURCE_DIR}" CACHE PATH "" FORCE)
+    find_package(FFmpeg REQUIRED)
+endif()
+
+message(STATUS "[ace] FFmpeg include dirs: ${FFmpeg_INCLUDE_DIRS}")
+message(STATUS "[ace] FFmpeg libraries:    ${FFmpeg_LIBRARIES}")
+
 # ── Source files ──────────────────────────────────────────────────────────────
 set(ACE_SOURCES
     src/AudioEngine.cpp
+    src/decoder/FFmpegDecoder.cpp
     src/dsp/DspChain.cpp
     src/dsp/PEQ.cpp
     src/dsp/Crossfeed.cpp
@@ -23,6 +65,15 @@ set(ACE_SOURCES
 # ── Shared library (loaded by Tauri Rust bridge via FFI) ──────────────────────
 add_library(ace_engine SHARED ${ACE_SOURCES})
 target_include_directories(ace_engine PUBLIC include)
+target_include_directories(ace_engine PRIVATE src)
+
+# Link FFmpeg (avformat, avcodec, avutil, swresample)
+target_link_libraries(ace_engine PRIVATE
+    FFmpeg::avformat
+    FFmpeg::avcodec
+    FFmpeg::avutil
+    FFmpeg::swresample
+)
 
 # ── Platform-specific output backends ─────────────────────────────────────────
 if(WIN32)
