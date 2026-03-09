@@ -41,7 +41,7 @@
 - [ ] **A1.4.1** `ace_open_file`, `ace_play`, `ace_pause`, `ace_stop`, `ace_seek`
 - [ ] **A1.4.2** `ace_set_volume`, `ace_set_eq_band`, `ace_set_dsp_state`
 - [ ] **A1.4.3** `ace_get_position_ms`, `ace_analyze_file`
-- [ ] **A1.4.4** `ace_get_fft_frame` — 2048 bins × 2 channels
+- [ ] **A1.4.4** `ace_get_fft_frame` — KissFFT STFT (Hann, 2048-point), 2048 bins × 2 channels
 
 ### A1.5 Unit Tests (Google Test)
 
@@ -112,6 +112,14 @@
 - [ ] **A3.3.4** SMTC (System Media Transport Controls) update on track change
 - [ ] **A3.3.5** Preset bank manager (large preset catalog + import/export)
 - [ ] **A3.3.6** DSP profile stack UI (quick toggle between "Neutral", "Analytical", "Fun")
+- [ ] **A3.3.7** Real-time level meter + DR display (peak, RMS, LUFS bar in PlayerView)
+
+### A3.4 Dual UI Mode
+
+- [ ] **A3.4.1** Theming architecture — CSS variable layer + layout abstractions for two visual modes
+- [ ] **A3.4.2** "Elegant" mode (Oto / HiBy / UAPP-inspired — clean, art-forward, minimal chrome)
+- [ ] **A3.4.3** "Technical" mode (Symfonium-inspired — info-dense, waveform-forward, data-rich)
+- [ ] **A3.4.4** Mode switcher in SettingsView + persistent user preference
 
 ---
 
@@ -130,18 +138,12 @@
 - [ ] **A4.2.3** AAC / M4A: iTunes atoms
 - [ ] **A4.2.4** Embedded album art → `%APPDATA%/ace/art/` PNG cache
 
-### A4.3 Integration
+### A4.3 Metadata Editing + AutoTag
 
-- [ ] **A4.3.1** LibraryView wired to real scan data (replace mock tracks)
-- [ ] **A4.3.2** Album art displayed from cache in PlayerView
-
-### A4.4 Metadata Editing + AutoTag
-
-- [ ] **A4.4.1** Tag write-back engine (FLAC Vorbis, ID3v2.4, MP4 atoms)
-- [ ] **A4.4.2** Batch metadata editor (multi-select apply rules)
-- [ ] **A4.4.3** AcoustID fingerprint generation and lookup
-- [ ] **A4.4.4** MusicBrainz metadata fetch and confidence scoring
-- [ ] **A4.4.5** Cover Art Archive fetch + embed into file tags
+- [ ] **A4.3.1** Tag write-back engine (FLAC Vorbis, ID3v2.4, MP4 atoms)
+- [ ] **A4.3.2** AcoustID fingerprint generation and lookup
+- [ ] **A4.3.3** MusicBrainz metadata fetch and confidence scoring
+- [ ] **A4.3.4** Cover Art Archive fetch + embed into file tags
 
 ---
 
@@ -170,6 +172,9 @@
 - [ ] **A5.3.4** LibraryView sort / filter → SQL queries
 - [ ] **A5.3.5** Yearly recap generator + PNG share card export
 - [ ] **A5.3.6** Session-level stats (skips, repeats, peak listening hour)
+- [ ] **A5.3.7** LibraryView wired to real scan data from DB (replace mock tracks)
+- [ ] **A5.3.8** Album art displayed from cache in PlayerView
+- [ ] **A5.3.9** Batch metadata editor UI (multi-select apply rules, TaggerView)
 
 ---
 
@@ -211,7 +216,7 @@
 
 ### A7.1 FFT Engine (KissFFT — MIT license)
 
-- [ ] **A7.1.1** STFT: Hann window, 50% overlap, 2048-point
+- [ ] **A7.1.1** Extended STFT config (overlap %, window type, multi-resolution) — builds on A1.4.4
 - [ ] **A7.1.2** Per-channel spectrogram ring buffer
 - [ ] **A7.1.3** Mid/Side and merged/unmerged channel spectrogram toggle
 
@@ -230,6 +235,7 @@
 - [ ] **A7.2.7** Container/chunk inspector (RIFF/IFF/ID3/Vorbis block structure)
 - [ ] **A7.2.8** Binary data viewer (hex + bit-plane preview for padded-bit-depth detection)
 - [ ] **A7.2.9** Data-alignment validator (chunk boundary/padding consistency checks)
+- [ ] **A7.2.10** Automated verdict generator — aggregate all signals into plain-language quality assessment (genuine lossless / upsampled / lossy transcode)
 
 ### A7.3 Integration
 
@@ -337,7 +343,7 @@
 
 1. `ace_engine.dll` loads and plays FLAC end-to-end via WASAPI exclusive
 2. 60-band EQ applies without audible glitches
-3. All 14 Tauri IPC commands operational
+3. All 12 Tauri IPC commands operational
 4. Library scan → SQLite → LibraryView renders real data
 5. RadioView plays ICY streams with metadata display
 6. Analyzer produces real LUFS/DR/hi-res verdicts
@@ -359,3 +365,4 @@ Execution order is defined directly by task IDs.
 3. Inside each subsection, complete leaf tasks in ascending order:
   `A1.3.1` → `A1.3.2` → ... → `A1.3.11`
 4. If any dependency conflict appears, add a new item with the next available index (do not renumber completed IDs).
+5. **Backend-first principle:** within every section, backend/engine subsections precede frontend/UI subsections. A3 exists early solely to validate the A1+A2 engine pipeline end-to-end before continuing backend expansion (A4+).

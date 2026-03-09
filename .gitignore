@@ -48,3 +48,6 @@ turbo/
 apps/android/android/.gradle
 apps/android/android/app/build
 apps/android/android/local.properties
+
+# Local docs source material
+docs/original-prompt.md
