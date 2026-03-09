@@ -1,5 +1,7 @@
 # Platform: Android
 
+> **Phase B** — see [phase-B.md](phase-B.md) for full task hierarchy.
+
 ## Overview
 
 The Android platform uses **Tauri v2 Mobile** to wrap the same Next.js frontend in a native Android `Activity`.  
@@ -93,6 +95,31 @@ For physical device: set `devUrl` to LAN IP of dev machine.
 <uses-permission android:name="android.permission.USB_PERMISSION" />
 <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 ```
+
+---
+
+## Paths
+
+| Purpose | Path |
+|---|---|
+| Album art cache | `getExternalFilesDir()/ace/art/` |
+| Qobuz offline cache | `getExternalFilesDir()/ace/cache/` |
+| SQLite database | `getDatabasePath("ace.db")` |
+
+---
+
+## Phase B Cross-References
+
+| Feature | Phase Task |
+|---|---|
+| NDK cross-compilation | B1.1 |
+| Oboe output backend | B1.2 |
+| JNI/FFI bridge | B1.3 |
+| Android MediaSession | B3.2.1 |
+| READ_MEDIA_AUDIO permission | B4.1.1 |
+| ForegroundService (radio) | B6.3.1 |
+| OAuth2 Custom Tab (Qobuz) | B9.1.1 |
+| Android Auto | B9.4.1 |
 
 ---
 

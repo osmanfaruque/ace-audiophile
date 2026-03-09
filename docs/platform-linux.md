@@ -1,4 +1,6 @@
-# Platform: Linux
+# Platform: Linux Desktop
+
+> **Phase C** — see [phase-C.md](phase-C.md) for full task hierarchy.
 
 ## Overview
 
@@ -107,6 +109,32 @@ pnpm --filter @ace/ui dev
 cd apps/linux
 pnpm tauri dev
 ```
+
+---
+
+## Paths
+
+| Purpose | Path |
+|---|---|
+| Album art cache | `$XDG_DATA_HOME/ace/art/` |
+| Qobuz offline cache | `$XDG_CACHE_HOME/ace/` |
+| SQLite database | `$XDG_DATA_HOME/ace/ace.db` |
+| Config (Zustand persist) | `$XDG_CONFIG_HOME/ace/config.json` |
+
+---
+
+## Phase C Cross-References
+
+| Feature | Phase Task |
+|---|---|
+| ALSA direct hw output | C1.1.1 |
+| PipeWire backend | C1.2 |
+| udev hot-plug | C1.1.4 |
+| MPRIS2 D-Bus | C2.2 |
+| XDG Music dir scan | C4.1.1 |
+| inotify watcher | C4.1.2 |
+| libnotify (radio) | C6.3.2 |
+| libsecret / KWallet (Qobuz) | C9.1.2 |
 
 ---
 

@@ -54,8 +54,8 @@ Allowed `type` examples:
 
 - `feat`
 - `fix`
-- `refact`
-- `doc`
+- `refactor`
+- `docs`
 - `chore`
 - `restruct`
 - `perf`
