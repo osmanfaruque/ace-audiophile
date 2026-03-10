@@ -76,11 +76,23 @@ void ace_cancel_next(void);
 
 #define ACE_EQ_BANDS 60
 
+typedef enum AceFilterType {
+    ACE_FILTER_PEAKING    = 0,  /**< Parametric peaking EQ (default) */
+    ACE_FILTER_LOW_SHELF  = 1,  /**< Low shelf */
+    ACE_FILTER_HIGH_SHELF = 2,  /**< High shelf */
+    ACE_FILTER_LOW_PASS   = 3,  /**< Low-pass (2nd order) */
+    ACE_FILTER_HIGH_PASS  = 4,  /**< High-pass (2nd order) */
+    ACE_FILTER_BAND_PASS  = 5,  /**< Band-pass (constant skirt gain) */
+    ACE_FILTER_NOTCH      = 6,  /**< Notch (band reject) */
+    ACE_FILTER_ALL_PASS   = 7,  /**< All-pass (phase shift only) */
+} AceFilterType;
+
 typedef struct AceEqBand {
     float freq_hz;
     float gain_db;    /**< −24 … +24 dB */
     float q;
     uint8_t enabled;
+    uint8_t filter_type;  /**< AceFilterType (default 0 = peaking) */
 } AceEqBand;
 
 typedef struct AceDspState {
@@ -103,8 +115,9 @@ typedef struct AceDspState {
 int ace_set_dsp(const AceDspState* state);
 
 /** Set a single EQ band without touching the rest of the DSP state.
- *  band_index: 0 .. ACE_EQ_BANDS-1.  Returns 0 on success. */
-int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q, uint8_t enabled);
+ *  band_index: 0 .. ACE_EQ_BANDS-1.  filter_type: AceFilterType.  Returns 0 on success. */
+int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q,
+                    uint8_t enabled, uint8_t filter_type);
 
 /* ── Analysis ──────────────────────────────────────────────────────────────── */
 

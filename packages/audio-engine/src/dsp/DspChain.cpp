@@ -31,13 +31,15 @@ void DspChain::set_sample_rate(float sr)
         m_peq.configure(m_state.bands, m_sample_rate);
 }
 
-void DspChain::set_eq_band(int index, float freq_hz, float gain_db, float q, bool enabled)
+void DspChain::set_eq_band(int index, float freq_hz, float gain_db, float q,
+                           bool enabled, uint8_t filter_type)
 {
     if (index < 0 || index >= ACE_EQ_BANDS) return;
-    m_state.bands[index].freq_hz = freq_hz;
-    m_state.bands[index].gain_db = gain_db;
-    m_state.bands[index].q       = q;
-    m_state.bands[index].enabled = enabled ? 1 : 0;
+    m_state.bands[index].freq_hz     = freq_hz;
+    m_state.bands[index].gain_db     = gain_db;
+    m_state.bands[index].q           = q;
+    m_state.bands[index].enabled     = enabled ? 1 : 0;
+    m_state.bands[index].filter_type = filter_type;
     if (m_state.eq_enabled)
         m_peq.configure(m_state.bands, m_sample_rate);
 }

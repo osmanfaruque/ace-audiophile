@@ -24,7 +24,7 @@
 
 ### A1.3 DSP Chain
 
-- [ ] **A1.3.1** 60-band PEQ — biquad IIR, Transposed Direct Form II
+- [x] **A1.3.1** 60-band PEQ — biquad IIR, Transposed Direct Form II
 - [ ] **A1.3.2** Pre-amp — digital gain stage with clip detection
 - [ ] **A1.3.3** Crossfeed — Bauer binaural stereo-to-stereo
 - [ ] **A1.3.4** Polyphase resampler — libsoxr integration

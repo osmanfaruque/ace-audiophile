@@ -300,15 +300,17 @@ int ace_set_dsp(const AceDspState* state)
     return 0;
 }
 
-int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q, uint8_t enabled)
+int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q,
+                    uint8_t enabled, uint8_t filter_type)
 {
     if (band_index < 0 || band_index >= ACE_EQ_BANDS) return -1;
     std::lock_guard<std::mutex> lk(g_dsp_mtx);
-    g_dsp.bands[band_index].freq_hz = freq_hz;
-    g_dsp.bands[band_index].gain_db = gain_db;
-    g_dsp.bands[band_index].q       = q;
-    g_dsp.bands[band_index].enabled = enabled;
-    g_dsp_chain.set_eq_band(band_index, freq_hz, gain_db, q, enabled != 0);
+    g_dsp.bands[band_index].freq_hz     = freq_hz;
+    g_dsp.bands[band_index].gain_db     = gain_db;
+    g_dsp.bands[band_index].q           = q;
+    g_dsp.bands[band_index].enabled     = enabled;
+    g_dsp.bands[band_index].filter_type = filter_type;
+    g_dsp_chain.set_eq_band(band_index, freq_hz, gain_db, q, enabled != 0, filter_type);
     return 0;
 }
 
