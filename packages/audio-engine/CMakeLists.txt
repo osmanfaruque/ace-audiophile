@@ -64,6 +64,7 @@ set(ACE_SOURCES
     src/decoder/FFmpegDecoder.cpp
     src/dsp/DspChain.cpp
     src/dsp/PEQ.cpp
+    src/dsp/PreAmp.cpp
     src/dsp/Crossfeed.cpp
     src/dsp/Dither.cpp
     src/dsp/Resampler.cpp

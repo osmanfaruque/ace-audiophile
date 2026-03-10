@@ -6,7 +6,8 @@ void DspChain::apply(const AceDspState& state)
 {
     m_state = state;
 
-    // Pre-amp is applied inline in process()
+    // Pre-amp
+    m_preamp.set_gain_db(state.preamp_db);
 
     // PEQ
     if (state.eq_enabled)
@@ -48,13 +49,8 @@ void DspChain::process(float* buf, int frames, int channels)
 {
     if (!m_configured) return;
 
-    // 1. Pre-amp gain stage
-    if (m_state.preamp_db != 0.0f) {
-        float gain = std::pow(10.0f, m_state.preamp_db / 20.0f);
-        int total = frames * channels;
-        for (int i = 0; i < total; ++i)
-            buf[i] *= gain;
-    }
+    // 1. Pre-amp gain stage with clip detection (A1.3.2)
+    m_preamp.process(buf, frames, channels);
 
     // 2. Parametric EQ (60-band biquad IIR)
     if (m_state.eq_enabled)

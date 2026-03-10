@@ -1,6 +1,7 @@
 #pragma once
 #include "ace_engine.h"
 #include "PEQ.h"
+#include "PreAmp.h"
 #include "Crossfeed.h"
 #include "Dither.h"
 #include "Resampler.h"
@@ -13,8 +14,12 @@ public:
                      bool enabled, uint8_t filter_type);
     // process() is called on the audio thread with interleaved PCM float32 samples
     void process(float* buf, int frames, int channels);
+
+    PreAmp&       preamp()       { return m_preamp; }
+    const PreAmp& preamp() const { return m_preamp; }
 private:
     AceDspState m_state{};
+    PreAmp      m_preamp;
     PEQ         m_peq;
     Crossfeed   m_crossfeed;
     Dither      m_dither;

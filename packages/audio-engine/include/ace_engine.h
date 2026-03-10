@@ -119,6 +119,25 @@ int ace_set_dsp(const AceDspState* state);
 int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q,
                     uint8_t enabled, uint8_t filter_type);
 
+/* ── Pre-amp + clip detection (A1.3.2) ─────────────────────────────────────── */
+
+/** Set pre-amp gain in dB (clamped to ±20 dB). */
+void ace_set_preamp(float gain_db);
+
+typedef struct AceClipInfo {
+    float    peak_l;       /**< Peak sample level (linear) since last reset */
+    float    peak_r;
+    uint64_t clip_count_l; /**< Clipped samples (>1.0) since last reset */
+    uint64_t clip_count_r;
+    uint8_t  clipped;      /**< Non-zero if any clipping since last reset */
+} AceClipInfo;
+
+/** Get pre-amp clip detection stats.  Thread-safe.  Returns 0 on success. */
+int ace_get_preamp_clip(AceClipInfo* out);
+
+/** Reset clip counters and peak trackers. */
+void ace_reset_preamp_clip(void);
+
 /* ── Analysis ──────────────────────────────────────────────────────────────── */
 
 #define ACE_FFT_BINS 2048

@@ -314,6 +314,32 @@ int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q,
     return 0;
 }
 
+// ── Pre-amp + clip detection (A1.3.2) ────────────────────────────────────────
+
+void ace_set_preamp(float gain_db)
+{
+    std::lock_guard<std::mutex> lk(g_dsp_mtx);
+    g_dsp.preamp_db = gain_db;
+    g_dsp_chain.preamp().set_gain_db(gain_db);
+}
+
+int ace_get_preamp_clip(AceClipInfo* out)
+{
+    if (!out) return -1;
+    const auto& pa = g_dsp_chain.preamp();
+    out->peak_l       = pa.peak_l();
+    out->peak_r       = pa.peak_r();
+    out->clip_count_l = pa.clip_count_l();
+    out->clip_count_r = pa.clip_count_r();
+    out->clipped      = pa.clipped() ? 1 : 0;
+    return 0;
+}
+
+void ace_reset_preamp_clip(void)
+{
+    g_dsp_chain.preamp().reset_stats();
+}
+
 // ── Analysis ─────────────────────────────────────────────────────────────────
 
 int ace_analyze_file(
