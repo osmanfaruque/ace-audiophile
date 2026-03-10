@@ -8,10 +8,10 @@
 
 ### A1.1 FFmpeg Decoder
 
-- [ ] **A1.1.1** CMake FetchContent / system FFmpeg detection
-- [ ] **A1.1.2** `AVFormatContext` + `AVCodecContext` pipeline for: FLAC, WAV, AIFF, MP3, AAC, Opus
-- [ ] **A1.1.3** DSD support (DSF / DFF) — DoP passthrough or native DSD
-- [ ] **A1.1.4** Gapless decode — pre-buffer next track, seamless boundary crossing
+- [x] **A1.1.1** CMake FetchContent / system FFmpeg detection
+- [x] **A1.1.2** `AVFormatContext` + `AVCodecContext` pipeline for: FLAC, WAV, AIFF, MP3, AAC, Opus
+- [x] **A1.1.3** DSD support (DSF / DFF) — DoP passthrough or native DSD
+- [x] **A1.1.4** Gapless decode — pre-buffer next track, seamless boundary crossing
 
 ### A1.2 WASAPI Output Backend
 

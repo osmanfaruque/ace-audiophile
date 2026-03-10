@@ -60,6 +60,15 @@ uint64_t ace_get_position_ms(void);
 
 AceStatus ace_get_status(void);
 
+/* ── Gapless Queue (A1.1.4) ────────────────────────────────────────────────── */
+
+/** Pre-open the next track for seamless gapless transition.
+ *  Returns 0 on success.  Only one track can be queued at a time. */
+int  ace_queue_next(const char* uri);
+
+/** Cancel a previously queued next track. */
+void ace_cancel_next(void);
+
 /* ── DSP ───────────────────────────────────────────────────────────────────── */
 
 #define ACE_EQ_BANDS 60
