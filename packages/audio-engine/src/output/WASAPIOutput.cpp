@@ -60,8 +60,22 @@ static const GUID kKSDATA_Float = {
     0x00000003, 0x0000, 0x0010,
     {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}};
 
+// KSDATAFORMAT_SUBTYPE_PCM {00000001-0000-0010-8000-00AA00389B71}
+static const GUID kKSDATA_PCM = {
+    0x00000001, 0x0000, 0x0010,
+    {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}};
+
 #ifndef AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED
 #define AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED  ((HRESULT)0x88890019L)
+#endif
+#ifndef AUDCLNT_E_DEVICE_IN_USE
+#define AUDCLNT_E_DEVICE_IN_USE            ((HRESULT)0x8889000AL)
+#endif
+#ifndef AUDCLNT_E_UNSUPPORTED_FORMAT
+#define AUDCLNT_E_UNSUPPORTED_FORMAT       ((HRESULT)0x88890008L)
+#endif
+#ifndef AUDCLNT_E_EXCLUSIVE_MODE_NOT_ALLOWED
+#define AUDCLNT_E_EXCLUSIVE_MODE_NOT_ALLOWED ((HRESULT)0x8889000FL)
 #endif
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -194,7 +208,7 @@ public:
     }
 };
 
-// ── WASAPIImpl (A1.2.2 — exclusive event-driven render loop) ─────────────────
+// ── WASAPIImpl (A1.2.2 + A1.2.3 + A1.2.4) ───────────────────────────────────
 
 struct WASAPIImpl {
     IMMDevice*           device        = nullptr;
@@ -205,6 +219,8 @@ struct WASAPIImpl {
     UINT32               buffer_frames = 0;
     int                  channels      = 0;
     uint32_t             sample_rate   = 0;
+    int                  bit_depth     = 0;   // actual accepted bit depth
+    bool                 exclusive     = false;
     bool                 com_init      = false;
     std::thread          render_thread;
     std::unique_ptr<SpscRingBuffer> ring;
@@ -232,6 +248,84 @@ struct WASAPIImpl {
         return dev;
     }
 
+    // ── A1.2.3  Format negotiation ──────────────────────────────────────────
+
+    /** Build a WAVEFORMATEXTENSIBLE for the given parameters. */
+    static WAVEFORMATEXTENSIBLE make_wfx(uint32_t rate, int ch, int bits, bool is_float)
+    {
+        WAVEFORMATEXTENSIBLE wfx = {};
+        int byte_per_sample = (bits + 7) / 8;
+        // Container must be 1/2/3/4 bytes; for 24-bit we use 3 bytes (packed).
+        // Many drivers prefer a 4-byte container for 24-bit though, so we try
+        // packed first in the negotiation list.
+        wfx.Format.wFormatTag      = WAVE_FORMAT_EXTENSIBLE;
+        wfx.Format.nChannels       = static_cast<WORD>(ch);
+        wfx.Format.nSamplesPerSec  = rate;
+        wfx.Format.wBitsPerSample  = static_cast<WORD>(byte_per_sample * 8);
+        wfx.Format.nBlockAlign     = static_cast<WORD>(ch * byte_per_sample);
+        wfx.Format.nAvgBytesPerSec = rate * static_cast<DWORD>(wfx.Format.nBlockAlign);
+        wfx.Format.cbSize          = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
+        wfx.Samples.wValidBitsPerSample = static_cast<WORD>(bits);
+        wfx.dwChannelMask = (ch == 1) ? SPEAKER_FRONT_CENTER
+                          : (ch >= 2) ? (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT)
+                          : 0;
+        wfx.SubFormat = is_float ? kKSDATA_Float : kKSDATA_PCM;
+        return wfx;
+    }
+
+    /** Try a format in exclusive mode. Returns S_OK if supported. */
+    HRESULT probe_exclusive(WAVEFORMATEXTENSIBLE& wfx)
+    {
+        return audio_client->IsFormatSupported(
+            AUDCLNT_SHAREMODE_EXCLUSIVE,
+            reinterpret_cast<WAVEFORMATEX*>(&wfx), nullptr);
+    }
+
+    struct NegotiatedFormat {
+        WAVEFORMATEXTENSIBLE wfx;
+        bool found = false;
+    };
+
+    /** Negotiate the best exclusive-mode format closest to the source.
+     *  Priority: source rate > common rates; float32 > int32 > int24 > int16. */
+    NegotiatedFormat negotiate_exclusive(uint32_t src_rate, int ch)
+    {
+        // Rates to try: source rate first, then common hi-res and standard rates
+        uint32_t rates[] = {src_rate, 384000, 352800, 192000, 176400,
+                            96000, 88200, 48000, 44100};
+        struct FmtSpec { int bits; bool is_float; };
+        FmtSpec fmts[] = {
+            {32, true},   // float32 — native engine format
+            {32, false},  // int32
+            {24, false},  // int24
+            {16, false},  // int16
+        };
+
+        for (uint32_t rate : rates) {
+            for (auto& f : fmts) {
+                auto wfx = make_wfx(rate, ch, f.bits, f.is_float);
+                HRESULT hr = probe_exclusive(wfx);
+                if (hr == S_OK)
+                    return {wfx, true};
+
+                // For 24-bit, also try 32-bit container with 24 valid bits
+                if (f.bits == 24 && !f.is_float) {
+                    auto wfx32 = make_wfx(rate, ch, 24, false);
+                    wfx32.Format.wBitsPerSample  = 32;
+                    wfx32.Format.nBlockAlign      = static_cast<WORD>(ch * 4);
+                    wfx32.Format.nAvgBytesPerSec  = rate * static_cast<DWORD>(ch) * 4;
+                    wfx32.Samples.wValidBitsPerSample = 24;
+                    hr = probe_exclusive(wfx32);
+                    if (hr == S_OK)
+                        return {wfx32, true};
+                }
+            }
+        }
+        return {{}, false};
+    }
+
+    // ── Initialization (exclusive with A1.2.4 shared fallback) ──────────────
+
     int open(const char* device_id, uint32_t rate, int ch)
     {
         close();
@@ -247,34 +341,33 @@ struct WASAPIImpl {
                               nullptr, reinterpret_cast<void**>(&audio_client));
         if (FAILED(hr) || !audio_client) return -1;
 
-        // Build WAVEFORMATEXTENSIBLE — 32-bit float
-        WAVEFORMATEXTENSIBLE wfx = {};
-        wfx.Format.wFormatTag      = WAVE_FORMAT_EXTENSIBLE;
-        wfx.Format.nChannels       = static_cast<WORD>(ch);
-        wfx.Format.nSamplesPerSec  = rate;
-        wfx.Format.wBitsPerSample  = 32;
-        wfx.Format.nBlockAlign     = static_cast<WORD>(ch * 4);
-        wfx.Format.nAvgBytesPerSec = rate * static_cast<DWORD>(ch) * 4;
-        wfx.Format.cbSize          = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
-        wfx.Samples.wValidBitsPerSample = 32;
-        wfx.dwChannelMask = (ch == 1) ? SPEAKER_FRONT_CENTER
-                          : (ch >= 2) ? (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT)
-                          : 0;
-        wfx.SubFormat = kKSDATA_Float;
+        // A1.2.3 — negotiate best exclusive format
+        auto negotiated = negotiate_exclusive(rate, ch);
 
-        // Get device period
+        if (negotiated.found) {
+            int result = try_exclusive_init(negotiated.wfx, rate, ch);
+            if (result == 0) return 0;
+            // Exclusive failed at init time — fall through to shared
+        }
+
+        // A1.2.4 — shared-mode fallback
+        return try_shared_init(ch);
+    }
+
+    /** Attempt exclusive-mode init with the negotiated format. */
+    int try_exclusive_init(WAVEFORMATEXTENSIBLE& wfx, uint32_t /*src_rate*/, int ch)
+    {
         REFERENCE_TIME defaultPeriod = 0, minPeriod = 0;
         audio_client->GetDevicePeriod(&defaultPeriod, &minPeriod);
-        if (defaultPeriod == 0) defaultPeriod = 100000; // 10 ms fallback
+        if (defaultPeriod == 0) defaultPeriod = 100000;
 
-        // Initialize exclusive event-driven
-        hr = audio_client->Initialize(
+        HRESULT hr = audio_client->Initialize(
             AUDCLNT_SHAREMODE_EXCLUSIVE,
             AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
             defaultPeriod, defaultPeriod,
             reinterpret_cast<WAVEFORMATEX*>(&wfx), nullptr);
 
-        // Handle buffer-size alignment requirement
+        // Handle buffer-size alignment
         if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
             audio_client->GetBufferSize(&buffer_frames);
             audio_client->Release();
@@ -285,16 +378,85 @@ struct WASAPIImpl {
             if (FAILED(hr) || !audio_client) return -1;
 
             REFERENCE_TIME aligned = static_cast<REFERENCE_TIME>(
-                10000000.0 * buffer_frames / rate + 0.5);
+                10000000.0 * buffer_frames / wfx.Format.nSamplesPerSec + 0.5);
             hr = audio_client->Initialize(
                 AUDCLNT_SHAREMODE_EXCLUSIVE,
                 AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
                 aligned, aligned,
                 reinterpret_cast<WAVEFORMATEX*>(&wfx), nullptr);
         }
+
+        // If exclusive denied or device-in-use — don't finalize, let caller fallback
+        if (hr == AUDCLNT_E_DEVICE_IN_USE ||
+            hr == AUDCLNT_E_EXCLUSIVE_MODE_NOT_ALLOWED ||
+            hr == AUDCLNT_E_UNSUPPORTED_FORMAT) {
+            // Need a fresh IAudioClient for shared-mode attempt
+            audio_client->Release();
+            audio_client = nullptr;
+            device->Activate(kIID_IAudioClient, CLSCTX_ALL,
+                             nullptr, reinterpret_cast<void**>(&audio_client));
+            return -1;
+        }
         if (FAILED(hr)) return -1;
 
-        hr = audio_client->GetBufferSize(&buffer_frames);
+        exclusive   = true;
+        channels    = ch;
+        sample_rate = wfx.Format.nSamplesPerSec;
+        bit_depth   = wfx.Samples.wValidBitsPerSample;
+
+        return finalize_init();
+    }
+
+    /** A1.2.4 — Shared-mode fallback using the device mix format. */
+    int try_shared_init(int ch)
+    {
+        if (!audio_client) {
+            if (!device) return -1;
+            HRESULT hr = device->Activate(kIID_IAudioClient, CLSCTX_ALL,
+                                          nullptr, reinterpret_cast<void**>(&audio_client));
+            if (FAILED(hr) || !audio_client) return -1;
+        }
+
+        WAVEFORMATEX* mix_fmt = nullptr;
+        HRESULT hr = audio_client->GetMixFormat(&mix_fmt);
+        if (FAILED(hr) || !mix_fmt) return -1;
+
+        REFERENCE_TIME defaultPeriod = 0, minPeriod = 0;
+        audio_client->GetDevicePeriod(&defaultPeriod, &minPeriod);
+        if (defaultPeriod == 0) defaultPeriod = 100000;
+
+        // Shared mode: periodicity must be 0
+        hr = audio_client->Initialize(
+            AUDCLNT_SHAREMODE_SHARED,
+            AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+            defaultPeriod, 0,
+            mix_fmt, nullptr);
+
+        if (FAILED(hr)) {
+            CoTaskMemFree(mix_fmt);
+            return -1;
+        }
+
+        exclusive   = false;
+        channels    = mix_fmt->nChannels > 0 ? mix_fmt->nChannels : ch;
+        sample_rate = mix_fmt->nSamplesPerSec;
+
+        // Extract valid bits
+        if (mix_fmt->wFormatTag == WAVE_FORMAT_EXTENSIBLE && mix_fmt->cbSize >= 22) {
+            auto* ext = reinterpret_cast<WAVEFORMATEXTENSIBLE*>(mix_fmt);
+            bit_depth = ext->Samples.wValidBitsPerSample;
+        } else {
+            bit_depth = mix_fmt->wBitsPerSample;
+        }
+
+        CoTaskMemFree(mix_fmt);
+        return finalize_init();
+    }
+
+    /** Common finalization: get buffer size, create events, start render thread. */
+    int finalize_init()
+    {
+        HRESULT hr = audio_client->GetBufferSize(&buffer_frames);
         if (FAILED(hr)) return -1;
 
         buffer_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -308,11 +470,8 @@ struct WASAPIImpl {
                                       reinterpret_cast<void**>(&render_client));
         if (FAILED(hr) || !render_client) return -1;
 
-        channels    = ch;
-        sample_rate = rate;
-
         // Ring buffer: 8 periods of interleaved float samples
-        ring = std::make_unique<SpscRingBuffer>(buffer_frames * ch * 8);
+        ring = std::make_unique<SpscRingBuffer>(buffer_frames * channels * 8);
 
         // Pre-fill first buffer with silence
         BYTE* data = nullptr;
@@ -391,6 +550,8 @@ struct WASAPIImpl {
         buffer_frames = 0;
         channels = 0;
         sample_rate = 0;
+        bit_depth = 0;
+        exclusive = false;
 
         if (com_init) { CoUninitialize(); com_init = false; }
     }
@@ -454,7 +615,7 @@ std::vector<WasapiDeviceInfo> WASAPIOutput::enumerate_devices()
     return result;
 }
 
-// ── Public API (A1.2.2) ──────────────────────────────────────────────────────
+// ── Public API (A1.2.2 / A1.2.3 / A1.2.4) ───────────────────────────────────
 
 WASAPIOutput::WASAPIOutput()  = default;
 WASAPIOutput::~WASAPIOutput() { close(); }
@@ -477,4 +638,19 @@ void WASAPIOutput::close()
         m_impl->close();
         m_impl.reset();
     }
+}
+
+bool WASAPIOutput::is_exclusive() const
+{
+    return m_impl ? m_impl->exclusive : false;
+}
+
+uint32_t WASAPIOutput::actual_sample_rate() const
+{
+    return m_impl ? m_impl->sample_rate : 0;
+}
+
+int WASAPIOutput::actual_bit_depth() const
+{
+    return m_impl ? m_impl->bit_depth : 0;
 }
