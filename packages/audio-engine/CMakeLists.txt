@@ -58,6 +58,28 @@ FetchContent_Declare(kissfft
 FetchContent_Populate(kissfft)
 message(STATUS "[ace] KissFFT source dir: ${kissfft_SOURCE_DIR}")
 
+# ── libsoxr (A1.3.4 — polyphase resampler) ───────────────────────────────────
+set(BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(WITH_OPENMP    OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+FetchContent_Declare(soxr
+    GIT_REPOSITORY https://github.com/chirlu/soxr.git
+    GIT_TAG        0.1.3
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND     ""
+    INSTALL_COMMAND   ""
+)
+FetchContent_Populate(soxr)
+# soxr's CMakeLists uses CMAKE_SOURCE_DIR for its cmake modules path, which
+# resolves to our project root when built as a subdirectory.  Pre-set the
+# correct path so include(SetSystemProcessor) etc. succeed.
+list(APPEND CMAKE_MODULE_PATH "${soxr_SOURCE_DIR}/cmake/Modules")
+add_subdirectory(${soxr_SOURCE_DIR} ${soxr_BINARY_DIR} EXCLUDE_FROM_ALL)
+unset(CMAKE_POLICY_VERSION_MINIMUM CACHE)
+message(STATUS "[ace] libsoxr source dir: ${soxr_SOURCE_DIR}")
+
 # ── Source files ──────────────────────────────────────────────────────────────
 set(ACE_SOURCES
     src/AudioEngine.cpp
@@ -84,12 +106,16 @@ target_include_directories(ace_engine PRIVATE src)
 target_sources(ace_engine PRIVATE "${kissfft_SOURCE_DIR}/kiss_fft.c")
 target_include_directories(ace_engine PRIVATE "${kissfft_SOURCE_DIR}")
 
+# libsoxr include (soxr's old CMake doesn't propagate INTERFACE_INCLUDE_DIRECTORIES)
+target_include_directories(ace_engine PRIVATE "${soxr_SOURCE_DIR}/src")
+
 # Link FFmpeg (avformat, avcodec, avutil, swresample)
 target_link_libraries(ace_engine PRIVATE
     FFmpeg::avformat
     FFmpeg::avcodec
     FFmpeg::avutil
     FFmpeg::swresample
+    soxr
 )
 
 # ── Platform-specific output backends ─────────────────────────────────────────

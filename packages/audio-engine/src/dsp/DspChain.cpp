@@ -18,6 +18,14 @@ void DspChain::apply(const AceDspState& state)
     // Crossfeed (Bauer BS2B)
     m_crossfeed.configure(state.crossfeed_enabled ? state.crossfeed_strength : 0.0f, m_sample_rate);
 
+    // Resampler (libsoxr VHQ)
+    if (state.resampler_enabled && state.resampler_target_hz > 0)
+        m_resampler.configure(static_cast<uint32_t>(m_sample_rate),
+                              state.resampler_target_hz, 2);
+    else
+        m_resampler.configure(static_cast<uint32_t>(m_sample_rate),
+                              static_cast<uint32_t>(m_sample_rate), 2); // passthrough
+
     // Dither
     if (state.dither_enabled)
         m_dither.configure(state.dither_bits);
@@ -32,6 +40,16 @@ void DspChain::set_sample_rate(float sr)
         m_peq.configure(m_state.bands, m_sample_rate);
     if (m_configured && m_state.crossfeed_enabled)
         m_crossfeed.configure(m_state.crossfeed_strength, m_sample_rate);
+    if (m_configured && m_state.resampler_enabled && m_state.resampler_target_hz > 0)
+        m_resampler.configure(static_cast<uint32_t>(m_sample_rate),
+                              m_state.resampler_target_hz, 2);
+}
+
+float DspChain::output_sample_rate() const
+{
+    if (m_state.resampler_enabled && m_resampler.active())
+        return static_cast<float>(m_resampler.output_rate());
+    return m_sample_rate;
 }
 
 void DspChain::set_eq_band(int index, float freq_hz, float gain_db, float q,
@@ -47,9 +65,12 @@ void DspChain::set_eq_band(int index, float freq_hz, float gain_db, float q,
         m_peq.configure(m_state.bands, m_sample_rate);
 }
 
-void DspChain::process(float* buf, int frames, int channels)
+int DspChain::process(float* buf, int frames, int channels)
 {
-    if (!m_configured) return;
+    if (!m_configured) {
+        m_last_output = nullptr;
+        return frames;
+    }
 
     // 1. Pre-amp gain stage with clip detection (A1.3.2)
     m_preamp.process(buf, frames, channels);
@@ -62,12 +83,28 @@ void DspChain::process(float* buf, int frames, int channels)
     if (m_state.crossfeed_enabled)
         m_crossfeed.process(buf, frames, channels);
 
-    // 4. Dither (TPDF) — applied last before output
-    if (m_state.dither_enabled)
-        m_dither.process(buf, frames, channels);
+    // 4. Resampler — libsoxr polyphase (A1.3.4)
+    //    May change frame count; output goes to internal buffer.
+    int    out_frames = frames;
+    float* out_ptr    = buf;
 
-    // Clip guard: clamp to [-1.0, 1.0]
-    int total = frames * channels;
+    if (m_state.resampler_enabled && m_resampler.active()) {
+        int max_out = m_resampler.max_output_frames(frames);
+        m_resample_buf.resize(static_cast<size_t>(max_out * channels));
+        out_frames = m_resampler.process(buf, frames,
+                                         m_resample_buf.data(), max_out);
+        out_ptr = m_resample_buf.data();
+    }
+
+    // 5. Dither (TPDF) — applied to (potentially resampled) output
+    if (m_state.dither_enabled)
+        m_dither.process(out_ptr, out_frames, channels);
+
+    // 6. Clip guard: clamp to [-1.0, 1.0]
+    int total = out_frames * channels;
     for (int i = 0; i < total; ++i)
-        buf[i] = std::clamp(buf[i], -1.0f, 1.0f);
+        out_ptr[i] = std::clamp(out_ptr[i], -1.0f, 1.0f);
+
+    m_last_output = (out_ptr != buf) ? out_ptr : nullptr;
+    return out_frames;
 }

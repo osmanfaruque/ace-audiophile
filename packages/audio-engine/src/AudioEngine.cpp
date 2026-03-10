@@ -84,14 +84,17 @@ static void audio_thread_func()
                 pcm[i] *= vol;
         }
 
-        // DSP chain
+        // DSP chain (may resample — out_frames/out_ptr may differ from input)
+        int    out_frames;
+        float* out_ptr;
         {
             std::lock_guard<std::mutex> lk(g_dsp_mtx);
-            g_dsp_chain.process(pcm, static_cast<int>(buf.frame_count),
-                                g_decoder.format().channels);
+            out_frames = g_dsp_chain.process(pcm, static_cast<int>(buf.frame_count),
+                                             g_decoder.format().channels);
+            out_ptr = g_dsp_chain.last_output(pcm);
         }
 
-        // Update position
+        // Update position (based on input frames / source sample rate)
         const auto& fmt = g_decoder.format();
         uint64_t pos = g_position_ms.load()
                      + static_cast<uint64_t>(buf.frame_count) * 1000 / fmt.sample_rate;
@@ -103,14 +106,20 @@ static void audio_thread_func()
             last_pos_report = pos;
         }
 
-        // Meter callback (FFT + level)
+        // Effective output sample rate (after resampler)
+        int out_sr;
+        {
+            std::lock_guard<std::mutex> lk(g_dsp_mtx);
+            out_sr = static_cast<int>(g_dsp_chain.output_sample_rate());
+        }
+
+        // Meter callback (FFT + level) — use output data + output sample rate
         if (g_meter_cb) {
             AceFftFrame  fft{};
             AceLevelMeter lvl{};
-            g_spectrogram.compute(pcm, static_cast<int>(buf.frame_count),
-                                  static_cast<int>(fmt.sample_rate), fft);
+            g_spectrogram.compute(out_ptr, out_frames, out_sr, fft);
             fft.timestamp_ms = pos;
-            Spectrogram::compute_levels(pcm, static_cast<int>(buf.frame_count),
+            Spectrogram::compute_levels(out_ptr, out_frames,
                                         fmt.channels, lvl);
             g_spectrogram.store_last(fft, lvl);
             g_meter_cb(&fft, &lvl, g_meter_ud);
@@ -118,17 +127,16 @@ static void audio_thread_func()
             // Even without callback, keep snapshot current for ace_get_fft_frame
             AceFftFrame  fft{};
             AceLevelMeter lvl{};
-            g_spectrogram.compute(pcm, static_cast<int>(buf.frame_count),
-                                  static_cast<int>(fmt.sample_rate), fft);
+            g_spectrogram.compute(out_ptr, out_frames, out_sr, fft);
             fft.timestamp_ms = pos;
-            Spectrogram::compute_levels(pcm, static_cast<int>(buf.frame_count),
+            Spectrogram::compute_levels(out_ptr, out_frames,
                                         fmt.channels, lvl);
             g_spectrogram.store_last(fft, lvl);
         }
 
         // Write to output backend (A1.2)
 #ifdef _WIN32
-        g_output.write(pcm, static_cast<int>(buf.frame_count));
+        g_output.write(out_ptr, out_frames);
 #endif
     }
 }
@@ -321,6 +329,16 @@ void ace_set_crossfeed(uint8_t enabled, float strength)
     std::lock_guard<std::mutex> lk(g_dsp_mtx);
     g_dsp.crossfeed_enabled  = enabled;
     g_dsp.crossfeed_strength = strength;
+    g_dsp_chain.apply(g_dsp);
+}
+
+// ── Resampler — libsoxr polyphase (A1.3.4) ──────────────────────────────────
+
+void ace_set_resampler(uint8_t enabled, uint32_t target_hz)
+{
+    std::lock_guard<std::mutex> lk(g_dsp_mtx);
+    g_dsp.resampler_enabled   = enabled;
+    g_dsp.resampler_target_hz = target_hz;
     g_dsp_chain.apply(g_dsp);
 }
 

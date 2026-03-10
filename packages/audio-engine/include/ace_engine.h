@@ -124,6 +124,13 @@ int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q,
 /** Enable / disable crossfeed and set strength. */
 void ace_set_crossfeed(uint8_t enabled, float strength);
 
+/* ── Resampler — libsoxr polyphase (A1.3.4) ───────────────────────────────── */
+
+/** Enable / disable the polyphase resampler.
+ *  @param enabled    Non-zero to enable.
+ *  @param target_hz  Desired output sample rate (e.g. 96000, 192000). */
+void ace_set_resampler(uint8_t enabled, uint32_t target_hz);
+
 /* ── Pre-amp + clip detection (A1.3.2) ─────────────────────────────────────── */
 
 /** Set pre-amp gain in dB (clamped to ±20 dB). */
