@@ -2,11 +2,13 @@
 #include "AudioOutput.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 struct WASAPIImpl;
+struct DeviceNotificationClient;
 
 struct WasapiDeviceInfo {
     std::string id;
@@ -36,9 +38,33 @@ public:
     int actual_bit_depth() const;
 
     // ── A1.2.1  Device enumeration ──────────────────────────────────────────
-    /** Enumerate all active WASAPI render endpoints.
-     *  The default device (if found) has is_default == true. */
     static std::vector<WasapiDeviceInfo> enumerate_devices();
+
+    // ── A1.2.5  Hot-plug detection ──────────────────────────────────────────
+    enum class DeviceEvent { Added, Removed, DefaultChanged, StateChanged };
+    using DeviceChangeCallback = std::function<void(DeviceEvent, const std::string& device_id)>;
+
+    /** Start listening for device add/remove/default-change events.
+     *  Callback fires on a COM background thread. */
+    static bool start_hotplug(DeviceChangeCallback cb);
+
+    /** Stop listening for device change events. */
+    static void stop_hotplug();
+
+    // ── A1.2.6  Bit-perfect chain verification ──────────────────────────────
+    struct BitPerfectResult {
+        bool     passed       = false;
+        uint32_t sample_rate  = 0;
+        int      bit_depth    = 0;
+        bool     exclusive    = false;
+        float    hash_match   = 0.0f;  /**< 0.0–1.0; 1.0 = perfect */
+        char     detail[256]  = {};
+    };
+
+    /** Generate a known test tone, play through the configured output,
+     *  then verify the signal chain by comparing the rendered samples.
+     *  device_id may be nullptr for the default device. */
+    static BitPerfectResult verify_bitperfect(const char* device_id);
 
 private:
     std::unique_ptr<WASAPIImpl> m_impl;

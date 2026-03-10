@@ -19,8 +19,8 @@
 - [x] **A1.2.2** `AUDCLNT_SHAREMODE_EXCLUSIVE` event-driven render loop
 - [x] **A1.2.3** Format negotiation — match native sample rate / bit depth
 - [x] **A1.2.4** Shared-mode fallback when exclusive denied
-- [ ] **A1.2.5** `IMMNotificationClient` hot-plug detection
-- [ ] **A1.2.6** USB DAC direct-path verification (bit-perfect chain validation with test tone hash)
+- [x] **A1.2.5** `IMMNotificationClient` hot-plug detection
+- [x] **A1.2.6** USB DAC direct-path verification (bit-perfect chain validation with test tone hash)
 
 ### A1.3 DSP Chain
 

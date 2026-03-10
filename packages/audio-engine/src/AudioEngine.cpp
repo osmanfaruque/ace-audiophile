@@ -329,3 +329,64 @@ void ace_set_error_callback(AceErrorCallback cb, void* ud)
     g_error_cb = cb;
     g_error_ud = ud;
 }
+
+// ── Hot-plug detection (A1.2.5) ──────────────────────────────────────────────
+
+static AceDeviceChangeCallback g_devchange_cb = nullptr;
+static void*                   g_devchange_ud = nullptr;
+
+int ace_start_device_watch(AceDeviceChangeCallback cb, void* userdata)
+{
+    g_devchange_cb = cb;
+    g_devchange_ud = userdata;
+
+#ifdef _WIN32
+    bool ok = WASAPIOutput::start_hotplug(
+        [](WASAPIOutput::DeviceEvent ev, const std::string& id) {
+            if (!g_devchange_cb) return;
+            AceDeviceEvent ace_ev;
+            switch (ev) {
+                case WASAPIOutput::DeviceEvent::Added:          ace_ev = ACE_DEVICE_ADDED; break;
+                case WASAPIOutput::DeviceEvent::Removed:        ace_ev = ACE_DEVICE_REMOVED; break;
+                case WASAPIOutput::DeviceEvent::DefaultChanged: ace_ev = ACE_DEVICE_DEFAULT_CHANGED; break;
+                case WASAPIOutput::DeviceEvent::StateChanged:   ace_ev = ACE_DEVICE_STATE_CHANGED; break;
+                default: return;
+            }
+            g_devchange_cb(ace_ev, id.c_str(), g_devchange_ud);
+        });
+    return ok ? 0 : -1;
+#else
+    return -1;
+#endif
+}
+
+void ace_stop_device_watch(void)
+{
+#ifdef _WIN32
+    WASAPIOutput::stop_hotplug();
+#endif
+    g_devchange_cb = nullptr;
+    g_devchange_ud = nullptr;
+}
+
+// ── Bit-perfect verification (A1.2.6) ────────────────────────────────────────
+
+int ace_verify_bitperfect(const char* device_id, AceBitPerfectResult* out)
+{
+    if (!out) return -1;
+
+#ifdef _WIN32
+    auto r = WASAPIOutput::verify_bitperfect(device_id);
+    out->passed      = r.passed ? 1 : 0;
+    out->sample_rate  = r.sample_rate;
+    out->bit_depth    = r.bit_depth;
+    out->exclusive    = r.exclusive ? 1 : 0;
+    out->hash_match   = r.hash_match;
+    std::strncpy(out->detail, r.detail, sizeof(out->detail) - 1);
+    out->detail[sizeof(out->detail) - 1] = '\0';
+    return 0;
+#else
+    std::snprintf(out->detail, sizeof(out->detail), "Not supported on this platform");
+    return -1;
+#endif
+}

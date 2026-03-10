@@ -155,6 +155,40 @@ void ace_set_position_callback(AcePositionCallback cb, void* userdata);
 typedef void (*AceErrorCallback)(const char* message, void* userdata);
 void ace_set_error_callback(AceErrorCallback cb, void* userdata);
 
+/* ── Hot-plug detection (A1.2.5) ───────────────────────────────────────────── */
+
+typedef enum AceDeviceEvent {
+    ACE_DEVICE_ADDED           = 0,
+    ACE_DEVICE_REMOVED         = 1,
+    ACE_DEVICE_DEFAULT_CHANGED = 2,
+    ACE_DEVICE_STATE_CHANGED   = 3,
+} AceDeviceEvent;
+
+typedef void (*AceDeviceChangeCallback)(AceDeviceEvent event, const char* device_id,
+                                        void* userdata);
+
+/** Start listening for device add/remove/default-change events.
+ *  Returns 0 on success. */
+int  ace_start_device_watch(AceDeviceChangeCallback cb, void* userdata);
+
+/** Stop listening for device change events. */
+void ace_stop_device_watch(void);
+
+/* ── Bit-perfect verification (A1.2.6) ─────────────────────────────────────── */
+
+typedef struct AceBitPerfectResult {
+    uint8_t  passed;
+    uint32_t sample_rate;
+    int32_t  bit_depth;
+    uint8_t  exclusive;
+    float    hash_match;     /**< 0.0–1.0; 1.0 = perfect */
+    char     detail[256];
+} AceBitPerfectResult;
+
+/** Play a known test tone through the device and verify the signal chain.
+ *  device_id may be NULL for the default device.  Returns 0 on success. */
+int ace_verify_bitperfect(const char* device_id, AceBitPerfectResult* out);
+
 #ifdef __cplusplus
 }
 #endif
