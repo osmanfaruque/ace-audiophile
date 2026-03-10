@@ -2,8 +2,11 @@
 #include "AudioOutput.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
+
+struct WASAPIImpl;
 
 struct WasapiDeviceInfo {
     std::string id;
@@ -27,4 +30,7 @@ public:
     /** Enumerate all active WASAPI render endpoints.
      *  The default device (if found) has is_default == true. */
     static std::vector<WasapiDeviceInfo> enumerate_devices();
+
+private:
+    std::unique_ptr<WASAPIImpl> m_impl;
 };

@@ -78,7 +78,7 @@ target_link_libraries(ace_engine PRIVATE
 # ── Platform-specific output backends ─────────────────────────────────────────
 if(WIN32)
     target_sources(ace_engine PRIVATE src/output/WASAPIOutput.cpp)
-    target_link_libraries(ace_engine PRIVATE mmdevapi ole32)
+    target_link_libraries(ace_engine PRIVATE mmdevapi ole32 avrt)
 elseif(APPLE)
     target_sources(ace_engine PRIVATE src/output/CoreAudioOutput.cpp)
     target_link_libraries(ace_engine PRIVATE

@@ -41,6 +41,11 @@ static std::atomic<bool>  g_pause_flag{false};
 static DspChain           g_dsp_chain;
 static Spectrogram        g_spectrogram;
 
+// Output backend (A1.2)
+#ifdef _WIN32
+static WASAPIOutput       g_output;
+#endif
+
 // ── Audio thread ─────────────────────────────────────────────────────────────
 
 static void audio_thread_func()
@@ -109,7 +114,10 @@ static void audio_thread_func()
             g_meter_cb(&fft, &lvl, g_meter_ud);
         }
 
-        // TODO: write to output backend (A1.2)
+        // Write to output backend (A1.2)
+#ifdef _WIN32
+        g_output.write(pcm, static_cast<int>(buf.frame_count));
+#endif
     }
 }
 
@@ -188,6 +196,15 @@ int ace_play(void)
     // Start fresh audio thread
     if (g_thread_running.load()) return 0; // already playing
 
+#ifdef _WIN32
+    // Open output device with decoder format (A1.2.2)
+    const auto& fmt = g_decoder.format();
+    if (g_output.open(nullptr, fmt.sample_rate, fmt.channels) != 0) {
+        if (g_error_cb) g_error_cb("Failed to open WASAPI output", g_error_ud);
+        return -1;
+    }
+#endif
+
     g_thread_running.store(true);
     g_pause_flag.store(false);
     g_status.store(ACE_STATUS_PLAYING);
@@ -210,6 +227,10 @@ int ace_stop(void)
 
     if (g_audio_thread.joinable())
         g_audio_thread.join();
+
+#ifdef _WIN32
+    g_output.close();
+#endif
 
     g_decoder.close();
     g_status.store(ACE_STATUS_STOPPED);
