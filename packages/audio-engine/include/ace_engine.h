@@ -45,6 +45,9 @@ typedef enum AceStatus {
 /** Open a local file or URI.  Returns 0 on success. */
 int  ace_open(const char* uri);
 
+/** Open a local file path.  Convenience alias for ace_open(). */
+int  ace_open_file(const char* path);
+
 int  ace_play(void);
 int  ace_pause(void);
 int  ace_stop(void);
@@ -99,6 +102,10 @@ typedef struct AceDspState {
 /** Apply DSP state atomically.  Safe to call during playback. */
 int ace_set_dsp(const AceDspState* state);
 
+/** Set a single EQ band without touching the rest of the DSP state.
+ *  band_index: 0 .. ACE_EQ_BANDS-1.  Returns 0 on success. */
+int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q, uint8_t enabled);
+
 /* ── Analysis ──────────────────────────────────────────────────────────────── */
 
 #define ACE_FFT_BINS 2048
@@ -146,6 +153,11 @@ int ace_analyze_file(
 /** Called from the audio thread every ~16 ms with FFT + level data. */
 typedef void (*AceMeterCallback)(const AceFftFrame* fft, const AceLevelMeter* level, void* userdata);
 void ace_set_meter_callback(AceMeterCallback cb, void* userdata);
+
+/** Poll the latest FFT frame + level meter snapshot.
+ *  Thread-safe.  Returns 0 on success, -1 if no data yet.
+ *  This is the non-callback alternative for frontends that prefer polling. */
+int ace_get_fft_frame(AceFftFrame* fft, AceLevelMeter* level);
 
 /** Called when playback position changes (~100 ms resolution). */
 typedef void (*AcePositionCallback)(uint64_t position_ms, void* userdata);

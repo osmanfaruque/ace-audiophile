@@ -46,6 +46,18 @@ endif()
 message(STATUS "[ace] FFmpeg include dirs: ${FFmpeg_INCLUDE_DIRS}")
 message(STATUS "[ace] FFmpeg libraries:    ${FFmpeg_LIBRARIES}")
 
+# ── KissFFT (A1.4.4) ─────────────────────────────────────────────────────────
+include(FetchContent)
+FetchContent_Declare(kissfft
+    GIT_REPOSITORY https://github.com/mborgerding/kissfft.git
+    GIT_TAG        131.1.0
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND     ""
+    INSTALL_COMMAND   ""
+)
+FetchContent_Populate(kissfft)
+message(STATUS "[ace] KissFFT source dir: ${kissfft_SOURCE_DIR}")
+
 # ── Source files ──────────────────────────────────────────────────────────────
 set(ACE_SOURCES
     src/AudioEngine.cpp
@@ -66,6 +78,10 @@ set(ACE_SOURCES
 add_library(ace_engine SHARED ${ACE_SOURCES})
 target_include_directories(ace_engine PUBLIC include)
 target_include_directories(ace_engine PRIVATE src)
+
+# KissFFT — compile kiss_fft.c directly (header-only style with one .c file)
+target_sources(ace_engine PRIVATE "${kissfft_SOURCE_DIR}/kiss_fft.c")
+target_include_directories(ace_engine PRIVATE "${kissfft_SOURCE_DIR}")
 
 # Link FFmpeg (avformat, avcodec, avutil, swresample)
 target_link_libraries(ace_engine PRIVATE

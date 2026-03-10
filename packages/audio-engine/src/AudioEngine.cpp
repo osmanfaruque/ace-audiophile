@@ -110,8 +110,20 @@ static void audio_thread_func()
             g_spectrogram.compute(pcm, static_cast<int>(buf.frame_count),
                                   static_cast<int>(fmt.sample_rate), fft);
             fft.timestamp_ms = pos;
-            // TODO: fill lvl from metering pass
+            Spectrogram::compute_levels(pcm, static_cast<int>(buf.frame_count),
+                                        fmt.channels, lvl);
+            g_spectrogram.store_last(fft, lvl);
             g_meter_cb(&fft, &lvl, g_meter_ud);
+        } else {
+            // Even without callback, keep snapshot current for ace_get_fft_frame
+            AceFftFrame  fft{};
+            AceLevelMeter lvl{};
+            g_spectrogram.compute(pcm, static_cast<int>(buf.frame_count),
+                                  static_cast<int>(fmt.sample_rate), fft);
+            fft.timestamp_ms = pos;
+            Spectrogram::compute_levels(pcm, static_cast<int>(buf.frame_count),
+                                        fmt.channels, lvl);
+            g_spectrogram.store_last(fft, lvl);
         }
 
         // Write to output backend (A1.2)
@@ -177,9 +189,20 @@ int ace_open(const char* uri)
         // Position resets inside the audio thread; nothing extra needed here.
     });
 
+    // Configure DSP chain with the decoder's sample rate
+    {
+        std::lock_guard<std::mutex> lk(g_dsp_mtx);
+        g_dsp_chain.set_sample_rate(static_cast<float>(g_decoder.format().sample_rate));
+    }
+
     g_status.store(ACE_STATUS_STOPPED);
     g_position_ms.store(0);
     return 0;
+}
+
+int ace_open_file(const char* path)
+{
+    return ace_open(path);
 }
 
 int ace_play(void)
@@ -277,6 +300,18 @@ int ace_set_dsp(const AceDspState* state)
     return 0;
 }
 
+int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q, uint8_t enabled)
+{
+    if (band_index < 0 || band_index >= ACE_EQ_BANDS) return -1;
+    std::lock_guard<std::mutex> lk(g_dsp_mtx);
+    g_dsp.bands[band_index].freq_hz = freq_hz;
+    g_dsp.bands[band_index].gain_db = gain_db;
+    g_dsp.bands[band_index].q       = q;
+    g_dsp.bands[band_index].enabled = enabled;
+    g_dsp_chain.set_eq_band(band_index, freq_hz, gain_db, q, enabled != 0);
+    return 0;
+}
+
 // ── Analysis ─────────────────────────────────────────────────────────────────
 
 int ace_analyze_file(
@@ -316,6 +351,17 @@ void ace_set_meter_callback(AceMeterCallback cb, void* ud)
 {
     g_meter_cb = cb;
     g_meter_ud = ud;
+}
+
+int ace_get_fft_frame(AceFftFrame* fft, AceLevelMeter* level)
+{
+    if (!fft && !level) return -1;
+    AceFftFrame  f{};
+    AceLevelMeter l{};
+    g_spectrogram.get_last(f, l);
+    if (fft)   *fft   = f;
+    if (level) *level = l;
+    return (f.timestamp_ms > 0) ? 0 : -1;
 }
 
 void ace_set_position_callback(AcePositionCallback cb, void* ud)

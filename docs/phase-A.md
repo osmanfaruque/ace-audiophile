@@ -38,10 +38,10 @@
 
 ### A1.4 Flat C API (`ace_engine.h`)
 
-- [ ] **A1.4.1** `ace_open_file`, `ace_play`, `ace_pause`, `ace_stop`, `ace_seek`
-- [ ] **A1.4.2** `ace_set_volume`, `ace_set_eq_band`, `ace_set_dsp_state`
-- [ ] **A1.4.3** `ace_get_position_ms`, `ace_analyze_file`
-- [ ] **A1.4.4** `ace_get_fft_frame` — KissFFT STFT (Hann, 2048-point), 2048 bins × 2 channels
+- [x] **A1.4.1** `ace_open_file`, `ace_play`, `ace_pause`, `ace_stop`, `ace_seek`
+- [x] **A1.4.2** `ace_set_volume`, `ace_set_eq_band`, `ace_set_dsp_state`
+- [x] **A1.4.3** `ace_get_position_ms`, `ace_analyze_file`
+- [x] **A1.4.4** `ace_get_fft_frame` — KissFFT STFT (Hann, 2048-point), 2048 bins × 2 channels
 
 ### A1.5 Unit Tests (Google Test)
 
