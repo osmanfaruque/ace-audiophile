@@ -15,8 +15,8 @@ void DspChain::apply(const AceDspState& state)
     else
         m_peq.reset();
 
-    // Crossfeed
-    m_crossfeed.set_strength(state.crossfeed_enabled ? state.crossfeed_strength : 0.0f);
+    // Crossfeed (Bauer BS2B)
+    m_crossfeed.configure(state.crossfeed_enabled ? state.crossfeed_strength : 0.0f, m_sample_rate);
 
     // Dither
     if (state.dither_enabled)
@@ -30,6 +30,8 @@ void DspChain::set_sample_rate(float sr)
     m_sample_rate = sr;
     if (m_configured && m_state.eq_enabled)
         m_peq.configure(m_state.bands, m_sample_rate);
+    if (m_configured && m_state.crossfeed_enabled)
+        m_crossfeed.configure(m_state.crossfeed_strength, m_sample_rate);
 }
 
 void DspChain::set_eq_band(int index, float freq_hz, float gain_db, float q,

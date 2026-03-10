@@ -314,6 +314,16 @@ int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q,
     return 0;
 }
 
+// ── Crossfeed — Bauer BS2B (A1.3.3) ─────────────────────────────────────────
+
+void ace_set_crossfeed(uint8_t enabled, float strength)
+{
+    std::lock_guard<std::mutex> lk(g_dsp_mtx);
+    g_dsp.crossfeed_enabled  = enabled;
+    g_dsp.crossfeed_strength = strength;
+    g_dsp_chain.apply(g_dsp);
+}
+
 // ── Pre-amp + clip detection (A1.3.2) ────────────────────────────────────────
 
 void ace_set_preamp(float gain_db)

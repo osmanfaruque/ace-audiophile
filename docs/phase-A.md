@@ -26,7 +26,7 @@
 
 - [x] **A1.3.1** 60-band PEQ — biquad IIR, Transposed Direct Form II
 - [x] **A1.3.2** Pre-amp — digital gain stage with clip detection
-- [ ] **A1.3.3** Crossfeed — Bauer binaural stereo-to-stereo
+- [x] **A1.3.3** Crossfeed — Bauer binaural stereo-to-stereo
 - [ ] **A1.3.4** Polyphase resampler — libsoxr integration
 - [ ] **A1.3.5** TPDF dither + noise shaping (16-bit / 24-bit output)
 - [ ] **A1.3.6** Virtual surround / spatializer module toggle (desktop-only DSP stage)

@@ -119,6 +119,11 @@ int ace_set_dsp(const AceDspState* state);
 int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q,
                     uint8_t enabled, uint8_t filter_type);
 
+/* ── Crossfeed — Bauer BS2B (A1.3.3) ──────────────────────────────────────── */
+
+/** Enable / disable crossfeed and set strength. */
+void ace_set_crossfeed(uint8_t enabled, float strength);
+
 /* ── Pre-amp + clip detection (A1.3.2) ─────────────────────────────────────── */
 
 /** Set pre-amp gain in dB (clamped to ±20 dB). */
