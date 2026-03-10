@@ -15,7 +15,7 @@
 
 ### A1.2 WASAPI Output Backend
 
-- [ ] **A1.2.1** `IMMDeviceEnumerator` endpoint enumeration → device list
+- [x] **A1.2.1** `IMMDeviceEnumerator` endpoint enumeration → device list
 - [ ] **A1.2.2** `AUDCLNT_SHAREMODE_EXCLUSIVE` event-driven render loop
 - [ ] **A1.2.3** Format negotiation — match native sample rate / bit depth
 - [ ] **A1.2.4** Shared-mode fallback when exclusive denied

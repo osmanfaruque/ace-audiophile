@@ -5,6 +5,10 @@
 #include "output/AudioOutput.h"
 #include "analysis/Spectrogram.h"
 
+#ifdef _WIN32
+#include "output/WASAPIOutput.h"
+#endif
+
 #include <atomic>
 #include <cstring>
 #include <mutex>
@@ -126,13 +130,29 @@ void ace_shutdown(void)
 
 int ace_list_devices(AceDeviceInfo* out, int cap)
 {
-    // TODO: delegate to platform output backend (A1.2)
     if (cap < 1 || !out) return 0;
+
+#ifdef _WIN32
+    // A1.2.1 — real WASAPI device enumeration
+    auto devices = WASAPIOutput::enumerate_devices();
+    int n = 0;
+    for (const auto& d : devices) {
+        if (n >= cap) break;
+        std::snprintf(out[n].id,   sizeof(out[n].id),   "%s", d.id.c_str());
+        std::snprintf(out[n].name, sizeof(out[n].name), "%s", d.name.c_str());
+        out[n].max_sample_rate    = d.max_sample_rate;
+        out[n].supports_exclusive = d.supports_exclusive ? 1 : 0;
+        ++n;
+    }
+    return n;
+#else
+    // Fallback for non-Windows builds
     std::snprintf(out[0].id,   sizeof(out[0].id),   "default");
     std::snprintf(out[0].name, sizeof(out[0].name),  "Default Output");
-    out[0].max_sample_rate    = 192000;
-    out[0].supports_exclusive = 1;
+    out[0].max_sample_rate    = 48000;
+    out[0].supports_exclusive = 0;
     return 1;
+#endif
 }
 
 // ── Playback ─────────────────────────────────────────────────────────────────
