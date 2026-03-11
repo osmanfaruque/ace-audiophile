@@ -560,12 +560,23 @@ pub fn generate_spectrogram(_file_path: &str, _channel_index: u32) -> Result<Vec
     Ok(vec![])
 }
 
-// ── Folder scanning ──────────────────────────────────────────
+// ── Folder scanning (A4.1.1) ─────────────────────────────────
 
-const AUDIO_EXTENSIONS: &[&str] = &[
+pub const AUDIO_EXTENSIONS: &[&str] = &[
     "flac", "wav", "aiff", "aif", "mp3", "aac", "m4a",
     "ogg", "opus", "wma", "ape", "dsf", "dff", "wv",
 ];
+
+/// Batch size for progress events — emit every N files to avoid flooding IPC.
+const SCAN_BATCH_SIZE: u32 = 25;
+
+/// Check whether a path has a recognised audio extension.
+pub fn is_audio_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| AUDIO_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+        .unwrap_or(false)
+}
 
 pub fn scan_folder(app: &AppHandle, folder_path: &str) -> Result<u32, BoxError> {
     let root = std::path::Path::new(folder_path);
@@ -574,31 +585,36 @@ pub fn scan_folder(app: &AppHandle, folder_path: &str) -> Result<u32, BoxError> 
     }
 
     let mut count: u32 = 0;
-    let mut stack = vec![root.to_path_buf()];
+    let mut last_file = String::new();
 
-    while let Some(dir) = stack.pop() {
-        let entries = match std::fs::read_dir(&dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if p.is_dir() {
-                stack.push(p);
-            } else if let Some(ext) = p.extension() {
-                if AUDIO_EXTENSIONS.contains(&ext.to_string_lossy().to_lowercase().as_str()) {
-                    count += 1;
-                    app.emit(
-                        "ace://scan-progress",
-                        serde_json::json!({
-                            "file": p.to_string_lossy(),
-                            "count": count,
-                        }),
-                    )
-                    .ok();
-                }
+    for entry in walkdir::WalkDir::new(root)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let p = entry.path();
+        if p.is_file() && is_audio_file(p) {
+            count += 1;
+            last_file = p.to_string_lossy().into_owned();
+
+            // Emit progress in batches to keep IPC efficient
+            if count % SCAN_BATCH_SIZE == 0 {
+                app.emit(
+                    "ace://scan-progress",
+                    serde_json::json!({ "file": last_file, "count": count }),
+                )
+                .ok();
             }
         }
+    }
+
+    // Final progress for remainder
+    if count % SCAN_BATCH_SIZE != 0 {
+        app.emit(
+            "ace://scan-progress",
+            serde_json::json!({ "file": last_file, "count": count }),
+        )
+        .ok();
     }
 
     app.emit(

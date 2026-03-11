@@ -127,9 +127,9 @@
 
 ### A4.1 Folder Scanner (Rust)
 
-- [ ] **A4.1.1** `tauri::fs::read_dir` recursive with audio extension filter
-- [ ] **A4.1.2** `notify` crate file-system watcher for live folder changes
-- [ ] **A4.1.3** Scan progress events → frontend progress bar in LibraryView
+- [x] **A4.1.1** `tauri::fs::read_dir` recursive with audio extension filter
+- [x] **A4.1.2** `notify` crate file-system watcher for live folder changes
+- [x] **A4.1.3** Scan progress events → frontend progress bar in LibraryView
 
 ### A4.2 Metadata Extraction (TagLib via C++ engine)
 

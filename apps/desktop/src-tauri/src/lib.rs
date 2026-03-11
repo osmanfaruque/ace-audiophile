@@ -6,6 +6,7 @@ use tauri::Manager;
 mod commands;
 mod bridge;
 mod error;
+mod watcher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -42,6 +43,8 @@ pub fn run() {
             commands::ace_analyze_file,
             commands::ace_generate_spectrogram,
             commands::ace_scan_folder,
+            commands::ace_start_watcher,
+            commands::ace_stop_watcher,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Audiophile Ace");

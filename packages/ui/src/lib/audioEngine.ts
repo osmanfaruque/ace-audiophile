@@ -122,6 +122,12 @@ export interface IAudioEngine {
   // Scanning (A3.1.5)
   scanFolder(path: string, onProgress?: (file: string, count: number) => void): Promise<number>
 
+  // File-system watcher (A4.1.2)
+  startWatcher(paths: string[]): Promise<void>
+  stopWatcher(): Promise<void>
+  onFsChange(handler: (event: { kind: string; path: string }) => void): Promise<() => void>
+  onScanComplete(handler: (event: { total: number; folder: string }) => void): Promise<() => void>
+
   // Real-time event subscriptions
   onFftFrame(handler: (frame: FftFrame) => void): Promise<() => void>
   onLevelMeter(handler: (meter: LevelMeter) => void): Promise<() => void>
@@ -228,6 +234,24 @@ class TauriAudioEngine implements IAudioEngine {
       unlistenProgress?.()
       unlistenComplete?.()
     }
+  }
+
+  // ── A4.1.2 — File-system watcher ──────────────────────────
+
+  async startWatcher(paths: string[]) {
+    await invoke('ace_start_watcher', { paths })
+  }
+
+  async stopWatcher() {
+    await invoke('ace_stop_watcher')
+  }
+
+  onFsChange(handler: (event: { kind: string; path: string }) => void) {
+    return listen<{ kind: string; path: string }>('ace://fs-change', handler)
+  }
+
+  onScanComplete(handler: (event: { total: number; folder: string }) => void) {
+    return listen<{ total: number; folder: string }>('ace://scan-complete', handler)
   }
 
   // ── Real-time events ─────────────────────────────────────

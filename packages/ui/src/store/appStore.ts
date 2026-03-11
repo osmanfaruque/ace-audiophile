@@ -30,6 +30,11 @@ interface AppState {
   // Error notification (not persisted)
   lastError: string | null
 
+  // Scan state (not persisted)
+  isScanning: boolean
+  scanProgress: { file: string; count: number } | null
+  scanTotal: number | null
+
   // Actions
   setUiMode: (mode: UiMode) => void
   setColorScheme: (scheme: ColorScheme) => void
@@ -48,6 +53,9 @@ interface AppState {
   setCrossfadeDurationMs: (v: number) => void
   setReplayGainMode: (mode: 'off' | 'track' | 'album') => void
   setLastError: (error: string | null) => void
+  setIsScanning: (v: boolean) => void
+  setScanProgress: (p: { file: string; count: number } | null) => void
+  setScanTotal: (n: number | null) => void
   init: () => Promise<void>
 }
 
@@ -91,6 +99,10 @@ export const useAppStore = create<AppState>()(
       replayGainMode: 'off',
       lastError: null,
 
+      isScanning: false,
+      scanProgress: null,
+      scanTotal: null,
+
       setUiMode: (uiMode) => set({ uiMode }),
       setColorScheme: (colorScheme) => set({ colorScheme }),
       setAccentColor: (accentColor) => set({ accentColor }),
@@ -108,6 +120,9 @@ export const useAppStore = create<AppState>()(
       setCrossfadeDurationMs: (crossfadeDurationMs) => set({ crossfadeDurationMs }),
       setReplayGainMode: (replayGainMode) => set({ replayGainMode }),
       setLastError: (lastError) => set({ lastError }),
+      setIsScanning: (isScanning) => set({ isScanning }),
+      setScanProgress: (scanProgress) => set({ scanProgress }),
+      setScanTotal: (scanTotal) => set({ scanTotal }),
 
       init: async () => {
         try {

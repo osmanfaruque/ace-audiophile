@@ -228,3 +228,16 @@ pub async fn ace_generate_spectrogram(
 pub async fn ace_scan_folder(app: AppHandle, path: String) -> Result<u32, AppError> {
     crate::bridge::scan_folder(&app, &path).map_err(|e| AppError::ScanFailed(e.to_string()))
 }
+
+// ── A4.1.2 — File-system watcher ─────────────────────────────
+
+#[tauri::command]
+pub async fn ace_start_watcher(app: AppHandle, paths: Vec<String>) -> Result<(), AppError> {
+    crate::watcher::start(&app, &paths).map_err(|e| AppError::WatcherFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_stop_watcher(_app: AppHandle) -> Result<(), AppError> {
+    crate::watcher::stop();
+    Ok(())
+}

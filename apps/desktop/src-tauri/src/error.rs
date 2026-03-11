@@ -19,6 +19,8 @@ pub enum AppError {
     AnalysisFailed(String),
     /// Folder scan error (path not found, permission denied, etc.).
     ScanFailed(String),
+    /// File-system watcher error (notify crate).
+    WatcherFailed(String),
     /// DSP state application failed.
     DspError(String),
     /// Catch-all for unexpected errors.
@@ -33,6 +35,7 @@ impl std::fmt::Display for AppError {
             Self::DeviceNotFound(m) => write!(f, "Device not found: {m}"),
             Self::AnalysisFailed(m) => write!(f, "Analysis failed: {m}"),
             Self::ScanFailed(m) => write!(f, "Scan failed: {m}"),
+            Self::WatcherFailed(m) => write!(f, "Watcher failed: {m}"),
             Self::DspError(m) => write!(f, "DSP error: {m}"),
             Self::Internal(m) => write!(f, "Internal error: {m}"),
         }
@@ -57,6 +60,7 @@ impl Serialize for AppError {
             Self::DeviceNotFound(m) => ("DeviceNotFound", m.as_str()),
             Self::AnalysisFailed(m) => ("AnalysisFailed", m.as_str()),
             Self::ScanFailed(m) => ("ScanFailed", m.as_str()),
+            Self::WatcherFailed(m) => ("WatcherFailed", m.as_str()),
             Self::DspError(m) => ("DspError", m.as_str()),
             Self::Internal(m) => ("Internal", m.as_str()),
         };

@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import {
   FolderOpen, Search, Grid, List, ChevronUp, ChevronDown, Play, Star,
-  Music2, Disc3, Mic2, Tag,
+  Music2, Disc3, Mic2, Tag, FolderSync, Loader2,
 } from 'lucide-react'
 import { usePlaybackStore } from '@/store/playbackStore'
 import { useAppStore } from '@/store/appStore'
@@ -237,7 +237,8 @@ function SidePanel({
 
 export function LibraryView({ mode }: { mode: string }) {
   const store      = usePlaybackStore()
-  const { uiMode } = useAppStore()
+  const appStore   = useAppStore()
+  const { uiMode } = appStore
   const technical  = uiMode === 'technical'
 
   // Derive flat track list from queue (Phase 1 source)
@@ -260,6 +261,67 @@ export function LibraryView({ mode }: { mode: string }) {
   const [ratings, setRatings] = useState<Record<string, number>>({})
   const setRating = useCallback((id: string, val: number) =>
     setRatings((prev) => ({ ...prev, [id]: val })), [])
+
+  // ── Scan handler ─────────────────────────────────────────
+  const handleScanLibrary = useCallback(async () => {
+    const paths = appStore.libraryPaths
+    if (paths.length === 0) {
+      // If no library paths configured, let user pick a folder
+      try {
+        const { open } = await import('@tauri-apps/plugin-dialog')
+        const picked = await open({ directory: true })
+        if (!picked) return
+        const folder = typeof picked === 'string' ? picked : picked[0]
+        if (folder) appStore.addLibraryPath(folder)
+        else return
+        paths.push(folder)
+      } catch { return }
+    }
+
+    appStore.setIsScanning(true)
+    appStore.setScanProgress(null)
+    appStore.setScanTotal(null)
+
+    try {
+      const { getAudioEngine } = await import('@/lib/audioEngine')
+      const engine = getAudioEngine()
+      let totalAll = 0
+      for (const p of paths) {
+        const count = await engine.scanFolder(p, (file, count) =>
+          appStore.setScanProgress({ file, count })
+        )
+        totalAll += count
+      }
+      appStore.setScanTotal(totalAll)
+    } catch (e) {
+      console.error('[LibraryView] Scan failed:', e)
+    } finally {
+      appStore.setIsScanning(false)
+    }
+  }, [appStore])
+
+  // ── Start fs watcher on mount if library paths exist ─────
+  useEffect(() => {
+    if (appStore.libraryPaths.length === 0) return
+    let cleanup: (() => void) | undefined
+    ;(async () => {
+      try {
+        const { getAudioEngine } = await import('@/lib/audioEngine')
+        const engine = getAudioEngine()
+        await engine.startWatcher(appStore.libraryPaths)
+        cleanup = await engine.onFsChange((evt) => {
+          console.log('[Watcher]', evt.kind, evt.path)
+          // TODO: update library state incrementally in Phase 2
+        })
+      } catch {}
+    })()
+    return () => {
+      cleanup?.()
+      import('@/lib/audioEngine').then(({ getAudioEngine }) =>
+        getAudioEngine().stopWatcher().catch(() => {})
+      )
+    }
+  }, [appStore.libraryPaths])
 
   // ── Filtering ────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -426,7 +488,50 @@ export function LibraryView({ mode }: { mode: string }) {
             <FolderOpen size={13} />
             Open Files
           </button>
+
+          <button onClick={handleScanLibrary}
+            disabled={appStore.isScanning}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all hover:bg-white/10 disabled:opacity-50"
+            style={{ color: 'var(--ace-accent)' }}>
+            {appStore.isScanning ? <Loader2 size={13} className="animate-spin" /> : <FolderSync size={13} />}
+            {appStore.isScanning ? 'Scanning…' : 'Scan Library'}
+          </button>
         </div>
+
+        {/* Scan progress bar (A4.1.3) */}
+        {appStore.isScanning && appStore.scanProgress && (
+          <div className="shrink-0 px-4 py-1.5 border-b flex items-center gap-3"
+            style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-surface)' }}>
+            <Loader2 size={12} className="animate-spin shrink-0" style={{ color: 'var(--ace-accent)' }} />
+            <div className="flex-1 min-w-0">
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--ace-border)' }}>
+                <div className="h-full rounded-full transition-all duration-300"
+                  style={{ background: 'var(--ace-accent)', width: '100%', animation: 'pulse 1.5s ease-in-out infinite' }} />
+              </div>
+            </div>
+            <span className="text-[10px] tabular-nums shrink-0" style={{ color: 'var(--ace-text-muted)', fontFamily: 'var(--ace-font-mono)' }}>
+              {appStore.scanProgress.count} files found
+            </span>
+            <span className="text-[10px] truncate max-w-48" style={{ color: 'var(--ace-text-muted)' }}>
+              {appStore.scanProgress.file.split(/[\\/]/).pop()}
+            </span>
+          </div>
+        )}
+
+        {/* Scan complete banner */}
+        {!appStore.isScanning && appStore.scanTotal !== null && (
+          <div className="shrink-0 px-4 py-1.5 border-b flex items-center gap-2"
+            style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-surface)' }}>
+            <FolderSync size={12} style={{ color: 'var(--ace-accent)' }} />
+            <span className="text-[10px]" style={{ color: 'var(--ace-text-secondary)' }}>
+              Scan complete — {appStore.scanTotal} audio file{appStore.scanTotal !== 1 ? 's' : ''} found
+            </span>
+            <button onClick={() => appStore.setScanTotal(null)}
+              className="text-[10px] ml-auto hover:underline" style={{ color: 'var(--ace-text-muted)' }}>
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Empty state */}
         {tracks.length === 0 && (
