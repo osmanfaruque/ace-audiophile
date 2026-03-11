@@ -14,8 +14,10 @@
 use std::ffi::{CStr, CString};
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use libloading::{Library, Symbol};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::commands::{AudioDeviceInfo, DspStatePayload, FileAnalysisResult, TrackInfo};
@@ -26,6 +28,11 @@ type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 static ENGINE_LIB: OnceLock<Library> = OnceLock::new();
+
+// Rate-limit timestamps (ms since epoch)
+static LAST_FFT_EMIT: AtomicU64 = AtomicU64::new(0);
+static LAST_LEVEL_EMIT: AtomicU64 = AtomicU64::new(0);
+static LAST_POS_EMIT: AtomicU64 = AtomicU64::new(0);
 
 // ── DLL file name per platform ───────────────────────────────
 
@@ -120,6 +127,10 @@ pub fn init(app: AppHandle) -> Result<(), BoxError> {
     }
 
     eprintln!("[AceBridge] Engine initialized successfully");
+
+    // A2.3 — Register engine callbacks for event emission
+    register_engine_callbacks()?;
+
     Ok(())
 }
 
@@ -245,14 +256,19 @@ pub fn open_file(file_path: &str) -> Result<TrackInfo, BoxError> {
         .to_string_lossy()
         .into_owned();
 
-    Ok(TrackInfo {
+    let info = TrackInfo {
         file_path: file_path.to_string(),
         codec,
         sample_rate: c_analysis.sample_rate,
         bit_depth: c_analysis.bit_depth,
         channels: c_analysis.channels,
         duration_ms: c_analysis.duration_ms,
-    })
+    };
+
+    // A2.3.4 — Emit track-change event
+    emit_event("ace://track-change", &info);
+
+    Ok(info)
 }
 
 pub fn open_track(track_id: &str) -> Result<(), BoxError> {
@@ -600,4 +616,159 @@ fn emit_event<S: serde::Serialize + Clone>(event: &str, payload: S) {
     if let Some(app) = APP_HANDLE.get() {
         app.emit(event, payload).ok();
     }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+// ── A2.3  Event Emitters (audio thread → frontend) ──────────
+
+const ACE_FFT_BINS: usize = 2048;
+
+/// Matches AceFftFrame in ace_engine.h
+#[repr(C)]
+struct CAceFftFrame {
+    bins_l: [f32; ACE_FFT_BINS],
+    bins_r: [f32; ACE_FFT_BINS],
+    timestamp_ms: u64,
+}
+
+/// Matches AceLevelMeter in ace_engine.h
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CAceLevelMeter {
+    peak_l_db: f32,
+    peak_r_db: f32,
+    rms_l_db: f32,
+    rms_r_db: f32,
+    lufs_integrated: f32,
+}
+
+// Serializable payloads for Tauri events
+#[derive(Serialize, Clone)]
+struct FftFrameEvent {
+    bins_l: Vec<f32>,
+    bins_r: Vec<f32>,
+    timestamp_ms: u64,
+}
+
+#[derive(Serialize, Clone)]
+struct LevelMeterEvent {
+    peak_l_db: f32,
+    peak_r_db: f32,
+    rms_l_db: f32,
+    rms_r_db: f32,
+    lufs_integrated: f32,
+}
+
+#[derive(Serialize, Clone)]
+struct PositionEvent {
+    position_ms: u64,
+}
+
+/// C callback for meter data (FFT + level). Called from audio thread ~16ms.
+/// Rate-limits: FFT @ 60Hz (~16ms), level @ 30Hz (~33ms).
+unsafe extern "C" fn meter_callback(
+    fft: *const CAceFftFrame,
+    level: *const CAceLevelMeter,
+    _userdata: *mut std::ffi::c_void,
+) {
+    let now = now_ms();
+
+    // A2.3.1 — FFT frame @ 60 Hz
+    if !fft.is_null() {
+        let last = LAST_FFT_EMIT.load(Ordering::Relaxed);
+        if now.saturating_sub(last) >= 16 {
+            LAST_FFT_EMIT.store(now, Ordering::Relaxed);
+            let f = &*fft;
+            emit_event(
+                "ace://fft-frame",
+                FftFrameEvent {
+                    bins_l: f.bins_l.to_vec(),
+                    bins_r: f.bins_r.to_vec(),
+                    timestamp_ms: f.timestamp_ms,
+                },
+            );
+        }
+    }
+
+    // A2.3.2 — Level meter @ 30 Hz
+    if !level.is_null() {
+        let last = LAST_LEVEL_EMIT.load(Ordering::Relaxed);
+        if now.saturating_sub(last) >= 33 {
+            LAST_LEVEL_EMIT.store(now, Ordering::Relaxed);
+            let l = &*level;
+            emit_event(
+                "ace://level-meter",
+                LevelMeterEvent {
+                    peak_l_db: l.peak_l_db,
+                    peak_r_db: l.peak_r_db,
+                    rms_l_db: l.rms_l_db,
+                    rms_r_db: l.rms_r_db,
+                    lufs_integrated: l.lufs_integrated,
+                },
+            );
+        }
+    }
+}
+
+/// C callback for position updates. Rate-limits @ 10 Hz (~100ms).
+unsafe extern "C" fn position_callback(
+    position_ms: u64,
+    _userdata: *mut std::ffi::c_void,
+) {
+    let now = now_ms();
+    let last = LAST_POS_EMIT.load(Ordering::Relaxed);
+    if now.saturating_sub(last) >= 100 {
+        LAST_POS_EMIT.store(now, Ordering::Relaxed);
+        emit_event("ace://position-update", PositionEvent { position_ms });
+    }
+}
+
+/// C callback for engine errors.
+unsafe extern "C" fn error_callback(
+    message: *const i8,
+    _userdata: *mut std::ffi::c_void,
+) {
+    let msg = if message.is_null() {
+        "Unknown engine error".to_string()
+    } else {
+        CStr::from_ptr(message).to_string_lossy().into_owned()
+    };
+    eprintln!("[AceBridge] Engine error: {msg}");
+    emit_event("ace://engine-error", serde_json::json!({ "message": msg }));
+}
+
+/// Register all C engine callbacks. Called once after ace_init().
+fn register_engine_callbacks() -> Result<(), BoxError> {
+    unsafe {
+        // A2.3.1 + A2.3.2 — Meter callback (FFT + level)
+        type MeterCb = unsafe extern "C" fn(
+            *const CAceFftFrame,
+            *const CAceLevelMeter,
+            *mut std::ffi::c_void,
+        );
+        let set_meter: Symbol<unsafe extern "C" fn(MeterCb, *mut std::ffi::c_void)> =
+            sym(b"ace_set_meter_callback\0")?;
+        set_meter(meter_callback, std::ptr::null_mut());
+
+        // A2.3.3 — Position callback
+        type PosCb = unsafe extern "C" fn(u64, *mut std::ffi::c_void);
+        let set_pos: Symbol<unsafe extern "C" fn(PosCb, *mut std::ffi::c_void)> =
+            sym(b"ace_set_position_callback\0")?;
+        set_pos(position_callback, std::ptr::null_mut());
+
+        // A2.3.5 — Error callback
+        type ErrCb = unsafe extern "C" fn(*const i8, *mut std::ffi::c_void);
+        let set_err: Symbol<unsafe extern "C" fn(ErrCb, *mut std::ffi::c_void)> =
+            sym(b"ace_set_error_callback\0")?;
+        set_err(error_callback, std::ptr::null_mut());
+    }
+
+    eprintln!("[AceBridge] Engine callbacks registered (FFT@60Hz, Level@30Hz, Pos@10Hz, Error)");
+    Ok(())
 }

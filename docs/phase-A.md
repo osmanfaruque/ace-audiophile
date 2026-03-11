@@ -74,11 +74,11 @@
 
 ### A2.3 Event Emitters (audio thread → frontend)
 
-- [ ] **A2.3.1** `ace://fft-frame` @ 60 Hz — `FftFrame` (2048 bins × 2 ch)
-- [ ] **A2.3.2** `ace://level-meter` @ 30 Hz — peak + RMS + LUFS
-- [ ] **A2.3.3** `ace://position-update` @ 10 Hz — `{ position_ms }`
-- [ ] **A2.3.4** `ace://track-change` — on track boundary
-- [ ] **A2.3.5** `ace://engine-error` — on fatal error
+- [x] **A2.3.1** `ace://fft-frame` @ 60 Hz — `FftFrame` (2048 bins × 2 ch)
+- [x] **A2.3.2** `ace://level-meter` @ 30 Hz — peak + RMS + LUFS
+- [x] **A2.3.3** `ace://position-update` @ 10 Hz — `{ position_ms }`
+- [x] **A2.3.4** `ace://track-change` — on track boundary
+- [x] **A2.3.5** `ace://engine-error` — on fatal error
 
 ### A2.4 Error Handling
 
