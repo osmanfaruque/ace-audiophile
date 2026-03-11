@@ -363,6 +363,23 @@ void ace_set_spatializer(uint8_t enabled, float strength)
     g_dsp_chain.apply(g_dsp);
 }
 
+// ── ReplayGain — loudness normalization (A1.3.7) ─────────────────────────────
+
+void ace_set_replay_gain(uint8_t mode, float track_gain, float album_gain,
+                         float track_peak, float album_peak,
+                         float pre_amp, float ceiling_db)
+{
+    std::lock_guard<std::mutex> lk(g_dsp_mtx);
+    g_dsp.rg_mode        = mode;
+    g_dsp.rg_track_gain  = track_gain;
+    g_dsp.rg_album_gain  = album_gain;
+    g_dsp.rg_track_peak  = track_peak;
+    g_dsp.rg_album_peak  = album_peak;
+    g_dsp.rg_pre_amp     = pre_amp;
+    g_dsp.rg_ceiling_db  = ceiling_db;
+    g_dsp_chain.apply(g_dsp);
+}
+
 // ── Pre-amp + clip detection (A1.3.2) ────────────────────────────────────────
 
 void ace_set_preamp(float gain_db)

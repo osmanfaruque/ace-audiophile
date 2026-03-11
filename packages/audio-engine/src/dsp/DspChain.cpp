@@ -6,6 +6,13 @@ void DspChain::apply(const AceDspState& state)
 {
     m_state = state;
 
+    // ReplayGain — loudness normalization + true-peak limiter (A1.3.7)
+    m_replay_gain.configure(
+        static_cast<ReplayGain::Mode>(state.rg_mode),
+        state.rg_track_gain, state.rg_album_gain,
+        state.rg_track_peak, state.rg_album_peak,
+        state.rg_pre_amp, state.rg_ceiling_db, m_sample_rate);
+
     // Pre-amp
     m_preamp.set_gain_db(state.preamp_db);
 
@@ -77,6 +84,9 @@ int DspChain::process(float* buf, int frames, int channels)
         m_last_output = nullptr;
         return frames;
     }
+
+    // 0. ReplayGain — loudness normalization + true-peak limiter (A1.3.7)
+    m_replay_gain.process(buf, frames, channels);
 
     // 1. Pre-amp gain stage with clip detection (A1.3.2)
     m_preamp.process(buf, frames, channels);

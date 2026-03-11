@@ -30,7 +30,7 @@
 - [x] **A1.3.4** Polyphase resampler — libsoxr integration
 - [x] **A1.3.5** TPDF dither + noise shaping (16-bit / 24-bit / 32-bit output)
 - [x] **A1.3.6** Virtual surround / spatializer module toggle (desktop-only DSP stage)
-- [ ] **A1.3.7** ReplayGain pipeline (track/album mode with true-peak safety)
+- [x] **A1.3.7** ReplayGain pipeline (track/album mode with true-peak safety)
 - [ ] **A1.3.8** Limiter + anti-clip guard after DSP chain
 - [ ] **A1.3.9** Convolver slot (FIR impulse response loader, optional)
 - [ ] **A1.3.10** Channel mixer matrix (L/R swap, mono sum, balance, polarity invert)

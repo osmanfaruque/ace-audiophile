@@ -2,6 +2,7 @@
 #include "ace_engine.h"
 #include "PEQ.h"
 #include "PreAmp.h"
+#include "ReplayGain.h"
 #include "Crossfeed.h"
 #include "Spatializer.h"
 #include "Dither.h"
@@ -36,6 +37,7 @@ public:
 
 private:
     AceDspState m_state{};
+    ReplayGain  m_replay_gain;
     PreAmp      m_preamp;
     PEQ         m_peq;
     Crossfeed   m_crossfeed;

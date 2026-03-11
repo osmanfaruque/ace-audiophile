@@ -112,6 +112,14 @@ typedef struct AceDspState {
     uint8_t  spatializer_enabled;
     float    spatializer_strength; /**< 0.0 – 1.0 */
 
+    uint8_t  rg_mode;             /**< 0=off, 1=track, 2=album */
+    float    rg_track_gain;       /**< Per-track gain in dB (from metadata) */
+    float    rg_album_gain;       /**< Per-album gain in dB */
+    float    rg_track_peak;       /**< Per-track true peak (linear) */
+    float    rg_album_peak;       /**< Per-album true peak (linear) */
+    float    rg_pre_amp;          /**< User pre-amp offset in dB */
+    float    rg_ceiling_db;       /**< True-peak ceiling in dBTP (e.g. −1.0) */
+
     float    preamp_db;           /**< −20 … +20 */
 } AceDspState;
 
@@ -149,6 +157,20 @@ void ace_set_dither(uint8_t enabled, int bits, uint8_t noise_shaping);
  *  @param enabled   Non-zero to enable.
  *  @param strength  Effect intensity 0.0 – 1.0. */
 void ace_set_spatializer(uint8_t enabled, float strength);
+
+/* ── ReplayGain — loudness normalization (A1.3.7) ──────────────────────────── */
+
+/** Configure ReplayGain.
+ *  @param mode          0=off, 1=track, 2=album.
+ *  @param track_gain    Per-track gain in dB (from file metadata).
+ *  @param album_gain    Per-album gain in dB.
+ *  @param track_peak    Per-track true peak (linear, typically ≤1.0).
+ *  @param album_peak    Per-album true peak (linear).
+ *  @param pre_amp       User pre-amp offset in dB.
+ *  @param ceiling_db    True-peak ceiling in dBTP (e.g. −1.0). */
+void ace_set_replay_gain(uint8_t mode, float track_gain, float album_gain,
+                         float track_peak, float album_peak,
+                         float pre_amp, float ceiling_db);
 
 /* ── Pre-amp + clip detection (A1.3.2) ─────────────────────────────────────── */
 
