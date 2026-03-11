@@ -37,8 +37,10 @@ pub fn run() {
             commands::ace_list_devices,
             commands::ace_set_output_device,
             commands::ace_set_dsp_state,
+            commands::ace_set_eq_band,
             commands::ace_analyze_file,
             commands::ace_generate_spectrogram,
+            commands::ace_scan_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Audiophile Ace");

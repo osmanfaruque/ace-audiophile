@@ -19,21 +19,94 @@ pub struct AudioDeviceInfo {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TrackInfo {
+    pub file_path: String,
+    pub codec: String,
+    pub sample_rate: u32,
+    pub bit_depth: u8,
+    pub channels: u8,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct EqBandPayload {
+    #[serde(default)]
+    pub freq_hz: f32,
+    #[serde(default)]
+    pub gain_db: f32,
+    #[serde(default = "default_q")]
+    pub q: f32,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub filter_type: u8,
+}
+
+fn default_q() -> f32 { 1.0 }
+fn default_true() -> bool { true }
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct DspStatePayload {
+    #[serde(default)]
     pub eq_enabled: bool,
-    pub preamp_db: f64,
-    pub bands: serde_json::Value,
+    #[serde(default)]
+    pub bands: Vec<EqBandPayload>,
+    #[serde(default)]
+    pub preamp_db: f32,
+    #[serde(default)]
     pub crossfeed_enabled: bool,
-    pub crossfeed_level: f64,
-    pub surround_enabled: bool,
+    #[serde(default)]
+    pub crossfeed_strength: f32,
+    #[serde(default)]
     pub dither_enabled: bool,
-    pub dither_type: String,
-    pub noise_shaping_profile: String,
-    pub compressor_enabled: bool,
-    pub stereo_width_enabled: bool,
-    pub stereo_width: f64,
-    pub replay_gain_mode: String,
-    pub replay_gain_preamp_db: f64,
+    #[serde(default)]
+    pub dither_bits: i32,
+    #[serde(default)]
+    pub dither_noise_shaping: bool,
+    #[serde(default)]
+    pub resampler_enabled: bool,
+    #[serde(default)]
+    pub resampler_target_hz: u32,
+    #[serde(default)]
+    pub spatializer_enabled: bool,
+    #[serde(default)]
+    pub spatializer_strength: f32,
+    #[serde(default)]
+    pub rg_mode: u8,
+    #[serde(default)]
+    pub rg_track_gain: f32,
+    #[serde(default)]
+    pub rg_album_gain: f32,
+    #[serde(default)]
+    pub rg_track_peak: f32,
+    #[serde(default)]
+    pub rg_album_peak: f32,
+    #[serde(default)]
+    pub rg_pre_amp: f32,
+    #[serde(default)]
+    pub rg_ceiling_db: f32,
+    #[serde(default)]
+    pub limiter_enabled: bool,
+    #[serde(default)]
+    pub limiter_ceiling_db: f32,
+    #[serde(default)]
+    pub limiter_release_ms: f32,
+    #[serde(default)]
+    pub mixer_enabled: bool,
+    #[serde(default)]
+    pub mixer_swap_lr: bool,
+    #[serde(default)]
+    pub mixer_mono: bool,
+    #[serde(default)]
+    pub mixer_balance: f32,
+    #[serde(default)]
+    pub mixer_invert_l: bool,
+    #[serde(default)]
+    pub mixer_invert_r: bool,
+    #[serde(default)]
+    pub crossfade_mode: u8,
+    #[serde(default)]
+    pub crossfade_duration_ms: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -72,7 +145,7 @@ pub async fn ace_engine_destroy(_app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn ace_open_file(_app: AppHandle, file_path: String) -> Result<(), String> {
+pub async fn ace_open_file(_app: AppHandle, file_path: String) -> Result<TrackInfo, String> {
     crate::bridge::open_file(&file_path).map_err(|e| e.to_string())
 }
 
@@ -102,8 +175,19 @@ pub async fn ace_seek(_app: AppHandle, position_ms: u64) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn ace_set_volume(_app: AppHandle, volume: f64) -> Result<(), String> {
-    crate::bridge::set_volume(volume).map_err(|e| e.to_string())
+pub async fn ace_set_volume(_app: AppHandle, db: f64) -> Result<(), String> {
+    crate::bridge::set_volume(db).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn ace_set_eq_band(
+    _app: AppHandle,
+    band: u8,
+    freq: f32,
+    gain_db: f32,
+    q: f32,
+) -> Result<(), String> {
+    crate::bridge::set_eq_band(band, freq, gain_db, q).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -136,4 +220,9 @@ pub async fn ace_generate_spectrogram(
 ) -> Result<Vec<f32>, String> {
     crate::bridge::generate_spectrogram(&file_path, channel_index)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn ace_scan_folder(app: AppHandle, path: String) -> Result<u32, String> {
+    crate::bridge::scan_folder(&app, &path).map_err(|e| e.to_string())
 }

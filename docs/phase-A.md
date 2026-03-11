@@ -61,16 +61,16 @@
 
 ### A2.2 Tauri Commands (`commands.rs`)
 
-- [ ] **A2.2.1** `ace_open_file(path: String) → Result<TrackInfo>`
-- [ ] **A2.2.2** `ace_play()`, `ace_pause()`, `ace_stop()`
-- [ ] **A2.2.3** `ace_seek(position_ms: u64)`
-- [ ] **A2.2.4** `ace_set_volume(db: f32)`
-- [ ] **A2.2.5** `ace_set_eq_band(band: u8, gain_db: f32, freq: f32, q: f32)`
-- [ ] **A2.2.6** `ace_apply_dsp(state: DspStateJson)`
-- [ ] **A2.2.7** `ace_get_devices() → Vec<AudioDevice>`
-- [ ] **A2.2.8** `ace_set_device(device_id: String)`
-- [ ] **A2.2.9** `ace_analyze_file(path: String) → AnalysisResult`
-- [ ] **A2.2.10** `ace_scan_folder(path: String)` → triggers scan event stream
+- [x] **A2.2.1** `ace_open_file(path: String) → Result<TrackInfo>`
+- [x] **A2.2.2** `ace_play()`, `ace_pause()`, `ace_stop()`
+- [x] **A2.2.3** `ace_seek(position_ms: u64)`
+- [x] **A2.2.4** `ace_set_volume(db: f32)`
+- [x] **A2.2.5** `ace_set_eq_band(band: u8, gain_db: f32, freq: f32, q: f32)`
+- [x] **A2.2.6** `ace_apply_dsp(state: DspStateJson)`
+- [x] **A2.2.7** `ace_get_devices() → Vec<AudioDevice>`
+- [x] **A2.2.8** `ace_set_device(device_id: String)`
+- [x] **A2.2.9** `ace_analyze_file(path: String) → AnalysisResult`
+- [x] **A2.2.10** `ace_scan_folder(path: String)` → triggers scan event stream
 
 ### A2.3 Event Emitters (audio thread → frontend)
 

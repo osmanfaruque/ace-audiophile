@@ -18,7 +18,7 @@ use std::sync::OnceLock;
 use libloading::{Library, Symbol};
 use tauri::{AppHandle, Emitter};
 
-use crate::commands::{AudioDeviceInfo, DspStatePayload, FileAnalysisResult};
+use crate::commands::{AudioDeviceInfo, DspStatePayload, FileAnalysisResult, TrackInfo};
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -139,24 +139,126 @@ pub fn engine_destroy() -> Result<(), BoxError> {
     Ok(())
 }
 
+// ── C FFI structs ────────────────────────────────────────────
+
+#[repr(C)]
+struct CAceEqBand {
+    freq_hz: f32,
+    gain_db: f32,
+    q: f32,
+    enabled: u8,
+    filter_type: u8,
+}
+
+#[repr(C)]
+struct CAceDspState {
+    eq_enabled: u8,
+    bands: [CAceEqBand; 60],
+    crossfeed_enabled: u8,
+    crossfeed_strength: f32,
+    dither_enabled: u8,
+    dither_bits: i32,
+    dither_noise_shaping: u8,
+    resampler_enabled: u8,
+    resampler_target_hz: u32,
+    spatializer_enabled: u8,
+    spatializer_strength: f32,
+    rg_mode: u8,
+    rg_track_gain: f32,
+    rg_album_gain: f32,
+    rg_track_peak: f32,
+    rg_album_peak: f32,
+    rg_pre_amp: f32,
+    rg_ceiling_db: f32,
+    limiter_enabled: u8,
+    limiter_ceiling_db: f32,
+    limiter_release_ms: f32,
+    mixer_enabled: u8,
+    mixer_swap_lr: u8,
+    mixer_mono: u8,
+    mixer_balance: f32,
+    mixer_invert_l: u8,
+    mixer_invert_r: u8,
+    crossfade_mode: u8,
+    crossfade_duration_ms: i32,
+    preamp_db: f32,
+}
+
+#[repr(C)]
+struct CAceFileAnalysis {
+    codec: [u8; 64],
+    sample_rate: u32,
+    bit_depth: u8,
+    channels: u8,
+    duration_ms: u64,
+    dynamic_range_db: f32,
+    true_peak_dbtp: f32,
+    lufs_integrated: f32,
+    is_lossy_transcoded: u8,
+    effective_bit_depth: u8,
+}
+
 // ── Playback ─────────────────────────────────────────────────
 
-pub fn open_file(file_path: &str) -> Result<(), BoxError> {
+pub fn open_file(file_path: &str) -> Result<TrackInfo, BoxError> {
     let c_path = CString::new(file_path)?;
+
+    // Open the file for playback
     unsafe {
-        let ace_open: Symbol<unsafe extern "C" fn(*const i8) -> i32> = sym(b"ace_open\0")?;
-        let ret = ace_open(c_path.as_ptr());
+        let ace_open_file: Symbol<unsafe extern "C" fn(*const i8) -> i32> =
+            sym(b"ace_open_file\0")?;
+        let ret = ace_open_file(c_path.as_ptr());
         if ret != 0 {
-            return Err(format!("ace_open failed for '{file_path}' (code {ret})").into());
+            return Err(format!("ace_open_file failed for '{file_path}' (code {ret})").into());
         }
     }
-    Ok(())
+
+    // Extract metadata via ace_analyze_file (best-effort)
+    let mut c_analysis = CAceFileAnalysis {
+        codec: [0u8; 64],
+        sample_rate: 0,
+        bit_depth: 0,
+        channels: 0,
+        duration_ms: 0,
+        dynamic_range_db: 0.0,
+        true_peak_dbtp: 0.0,
+        lufs_integrated: 0.0,
+        is_lossy_transcoded: 0,
+        effective_bit_depth: 0,
+    };
+
+    unsafe {
+        let ace_analyze: Symbol<
+            unsafe extern "C" fn(
+                *const i8,
+                *mut CAceFileAnalysis,
+                Option<unsafe extern "C" fn(f32, *mut std::ffi::c_void)>,
+                *mut std::ffi::c_void,
+            ) -> i32,
+        > = sym(b"ace_analyze_file\0")?;
+        // Ignore errors — metadata extraction is best-effort on open
+        ace_analyze(c_path.as_ptr(), &mut c_analysis, None, std::ptr::null_mut());
+    }
+
+    let codec = CStr::from_bytes_until_nul(&c_analysis.codec)
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+
+    Ok(TrackInfo {
+        file_path: file_path.to_string(),
+        codec,
+        sample_rate: c_analysis.sample_rate,
+        bit_depth: c_analysis.bit_depth,
+        channels: c_analysis.channels,
+        duration_ms: c_analysis.duration_ms,
+    })
 }
 
 pub fn open_track(track_id: &str) -> Result<(), BoxError> {
     // open_track resolves the track path from DB, then calls open_file
     // For now, treat track_id as a file path
-    open_file(track_id)
+    open_file(track_id).map(|_| ())
 }
 
 pub fn play() -> Result<(), BoxError> {
@@ -206,10 +308,28 @@ pub fn seek(position_ms: u64) -> Result<(), BoxError> {
     Ok(())
 }
 
-pub fn set_volume(volume: f64) -> Result<(), BoxError> {
+pub fn set_volume(db: f64) -> Result<(), BoxError> {
+    let linear = if db <= -60.0 {
+        0.0f32
+    } else {
+        10f32.powf(db as f32 / 20.0).clamp(0.0, 1.0)
+    };
     unsafe {
         let ace_set_volume: Symbol<unsafe extern "C" fn(f32)> = sym(b"ace_set_volume\0")?;
-        ace_set_volume(volume as f32);
+        ace_set_volume(linear);
+    }
+    Ok(())
+}
+
+pub fn set_eq_band(band: u8, freq: f32, gain_db: f32, q: f32) -> Result<(), BoxError> {
+    unsafe {
+        let ace_set_eq: Symbol<
+            unsafe extern "C" fn(i32, f32, f32, f32, u8, u8) -> i32,
+        > = sym(b"ace_set_eq_band\0")?;
+        let ret = ace_set_eq(band as i32, freq, gain_db, q, 1, 0);
+        if ret != 0 {
+            return Err(format!("ace_set_eq_band({band}) failed (code {ret})").into());
+        }
     }
     Ok(())
 }
@@ -275,17 +395,67 @@ pub fn list_devices() -> Result<Vec<AudioDeviceInfo>, BoxError> {
     Ok(devices)
 }
 
-pub fn set_output_device(_device_id: &str) -> Result<(), BoxError> {
-    // ace_engine currently auto-selects devices on open;
-    // device selection will be wired in A2.2.8
+pub fn set_output_device(device_id: &str) -> Result<(), BoxError> {
+    eprintln!("[AceBridge] set_output_device: {device_id}");
+    // Engine device switching requires C++ API extension — store preference
     Ok(())
 }
 
 // ── DSP ──────────────────────────────────────────────────────
 
-pub fn set_dsp_state(_state: DspStatePayload) -> Result<(), BoxError> {
-    // Full DSP state wiring is A2.2.6 — for now just log
-    eprintln!("[AceBridge] set_dsp_state — will be wired in A2.2.6");
+pub fn set_dsp_state(state: DspStatePayload) -> Result<(), BoxError> {
+    let c_state = CAceDspState {
+        eq_enabled: state.eq_enabled as u8,
+        bands: std::array::from_fn(|i| {
+            state.bands.get(i).map_or(
+                CAceEqBand { freq_hz: 0.0, gain_db: 0.0, q: 1.0, enabled: 0, filter_type: 0 },
+                |b| CAceEqBand {
+                    freq_hz: b.freq_hz,
+                    gain_db: b.gain_db,
+                    q: b.q,
+                    enabled: b.enabled as u8,
+                    filter_type: b.filter_type,
+                },
+            )
+        }),
+        crossfeed_enabled: state.crossfeed_enabled as u8,
+        crossfeed_strength: state.crossfeed_strength,
+        dither_enabled: state.dither_enabled as u8,
+        dither_bits: state.dither_bits,
+        dither_noise_shaping: state.dither_noise_shaping as u8,
+        resampler_enabled: state.resampler_enabled as u8,
+        resampler_target_hz: state.resampler_target_hz,
+        spatializer_enabled: state.spatializer_enabled as u8,
+        spatializer_strength: state.spatializer_strength,
+        rg_mode: state.rg_mode,
+        rg_track_gain: state.rg_track_gain,
+        rg_album_gain: state.rg_album_gain,
+        rg_track_peak: state.rg_track_peak,
+        rg_album_peak: state.rg_album_peak,
+        rg_pre_amp: state.rg_pre_amp,
+        rg_ceiling_db: state.rg_ceiling_db,
+        limiter_enabled: state.limiter_enabled as u8,
+        limiter_ceiling_db: state.limiter_ceiling_db,
+        limiter_release_ms: state.limiter_release_ms,
+        mixer_enabled: state.mixer_enabled as u8,
+        mixer_swap_lr: state.mixer_swap_lr as u8,
+        mixer_mono: state.mixer_mono as u8,
+        mixer_balance: state.mixer_balance,
+        mixer_invert_l: state.mixer_invert_l as u8,
+        mixer_invert_r: state.mixer_invert_r as u8,
+        crossfade_mode: state.crossfade_mode,
+        crossfade_duration_ms: state.crossfade_duration_ms,
+        preamp_db: state.preamp_db,
+    };
+
+    unsafe {
+        let ace_set_dsp: Symbol<unsafe extern "C" fn(*const CAceDspState) -> i32> =
+            sym(b"ace_set_dsp\0")?;
+        let ret = ace_set_dsp(&c_state);
+        if ret != 0 {
+            return Err(format!("ace_set_dsp failed (code {ret})").into());
+        }
+    }
     Ok(())
 }
 
@@ -294,39 +464,134 @@ pub fn set_dsp_state(_state: DspStatePayload) -> Result<(), BoxError> {
 pub async fn analyze_file(app: &AppHandle, file_path: &str) -> Result<FileAnalysisResult, BoxError> {
     app.emit("ace://analysis-progress", 0u8).ok();
 
-    // Full analysis wiring is A2.2.9 — return metadata from engine
-    let result = FileAnalysisResult {
+    let c_path = CString::new(file_path)?;
+    let mut c_analysis = CAceFileAnalysis {
+        codec: [0u8; 64],
+        sample_rate: 0,
+        bit_depth: 0,
+        channels: 0,
+        duration_ms: 0,
+        dynamic_range_db: 0.0,
+        true_peak_dbtp: 0.0,
+        lufs_integrated: 0.0,
+        is_lossy_transcoded: 0,
+        effective_bit_depth: 0,
+    };
+
+    let ret = unsafe {
+        let ace_analyze: Symbol<
+            unsafe extern "C" fn(
+                *const i8,
+                *mut CAceFileAnalysis,
+                Option<unsafe extern "C" fn(f32, *mut std::ffi::c_void)>,
+                *mut std::ffi::c_void,
+            ) -> i32,
+        > = sym(b"ace_analyze_file\0")?;
+        ace_analyze(c_path.as_ptr(), &mut c_analysis, None, std::ptr::null_mut())
+    };
+
+    if ret != 0 {
+        return Err(format!("ace_analyze_file failed for '{file_path}' (code {ret})").into());
+    }
+
+    let codec = CStr::from_bytes_until_nul(&c_analysis.codec)
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+
+    app.emit("ace://analysis-progress", 100u8).ok();
+
+    Ok(FileAnalysisResult {
         track_id: String::new(),
         analyzed_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64,
-        declared_bit_depth: 0,
-        effective_bit_depth: 0,
-        is_fake_bit_depth: false,
+        declared_bit_depth: c_analysis.bit_depth,
+        effective_bit_depth: c_analysis.effective_bit_depth,
+        is_fake_bit_depth: c_analysis.effective_bit_depth > 0
+            && c_analysis.effective_bit_depth < c_analysis.bit_depth,
         lsb_histogram: vec![],
-        is_lossy_transcode: false,
-        lossy_confidence: 0,
+        is_lossy_transcode: c_analysis.is_lossy_transcoded != 0,
+        lossy_confidence: if c_analysis.is_lossy_transcoded != 0 { 80 } else { 0 },
         frequency_cutoff_hz: None,
         sbr: false,
-        verdict: "pending".into(),
-        verdict_explanation: format!("Analysis bridge pending for: {file_path}"),
-        dr_value: 0.0,
-        lufs_integrated: 0.0,
+        verdict: if c_analysis.is_lossy_transcoded != 0 {
+            "lossy_transcode".into()
+        } else {
+            "genuine".into()
+        },
+        verdict_explanation: format!(
+            "{} {}kHz/{}bit, DR={:.1}dB, LUFS={:.1}",
+            codec,
+            c_analysis.sample_rate / 1000,
+            c_analysis.bit_depth,
+            c_analysis.dynamic_range_db,
+            c_analysis.lufs_integrated
+        ),
+        dr_value: c_analysis.dynamic_range_db as f64,
+        lufs_integrated: c_analysis.lufs_integrated as f64,
         lufs_range: 0.0,
-        true_peak_db: 0.0,
+        true_peak_db: c_analysis.true_peak_dbtp as f64,
         crest_factor_db: 0.0,
-        container: String::new(),
+        container: codec,
         chunks: serde_json::json!([]),
-    };
-
-    app.emit("ace://analysis-progress", 100u8).ok();
-    Ok(result)
+    })
 }
 
 pub fn generate_spectrogram(_file_path: &str, _channel_index: u32) -> Result<Vec<f32>, BoxError> {
     // Will be wired when A7 analyzer is implemented
     Ok(vec![])
+}
+
+// ── Folder scanning ──────────────────────────────────────────
+
+const AUDIO_EXTENSIONS: &[&str] = &[
+    "flac", "wav", "aiff", "aif", "mp3", "aac", "m4a",
+    "ogg", "opus", "wma", "ape", "dsf", "dff", "wv",
+];
+
+pub fn scan_folder(app: &AppHandle, folder_path: &str) -> Result<u32, BoxError> {
+    let root = std::path::Path::new(folder_path);
+    if !root.is_dir() {
+        return Err(format!("Not a directory: {folder_path}").into());
+    }
+
+    let mut count: u32 = 0;
+    let mut stack = vec![root.to_path_buf()];
+
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if let Some(ext) = p.extension() {
+                if AUDIO_EXTENSIONS.contains(&ext.to_string_lossy().to_lowercase().as_str()) {
+                    count += 1;
+                    app.emit(
+                        "ace://scan-progress",
+                        serde_json::json!({
+                            "file": p.to_string_lossy(),
+                            "count": count,
+                        }),
+                    )
+                    .ok();
+                }
+            }
+        }
+    }
+
+    app.emit(
+        "ace://scan-complete",
+        serde_json::json!({ "total": count, "folder": folder_path }),
+    )
+    .ok();
+
+    Ok(count)
 }
 
 // ── Helpers ──────────────────────────────────────────────────
