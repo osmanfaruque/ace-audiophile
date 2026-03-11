@@ -4,6 +4,8 @@
 use tauri::AppHandle;
 use serde::{Deserialize, Serialize};
 
+use crate::error::AppError;
+
 // ── Shared types (mirror @ace/types on the Rust side) ────────
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AudioDeviceInfo {
@@ -135,48 +137,48 @@ pub struct FileAnalysisResult {
 // ── Commands ─────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn ace_engine_init(_app: AppHandle) -> Result<(), String> {
-    crate::bridge::engine_init().map_err(|e| e.to_string())
+pub async fn ace_engine_init(_app: AppHandle) -> Result<(), AppError> {
+    crate::bridge::engine_init().map_err(|e| AppError::EngineLoad(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_engine_destroy(_app: AppHandle) -> Result<(), String> {
-    crate::bridge::engine_destroy().map_err(|e| e.to_string())
+pub async fn ace_engine_destroy(_app: AppHandle) -> Result<(), AppError> {
+    crate::bridge::engine_destroy().map_err(|e| AppError::EngineLoad(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_open_file(_app: AppHandle, file_path: String) -> Result<TrackInfo, String> {
-    crate::bridge::open_file(&file_path).map_err(|e| e.to_string())
+pub async fn ace_open_file(_app: AppHandle, file_path: String) -> Result<TrackInfo, AppError> {
+    crate::bridge::open_file(&file_path).map_err(|e| AppError::Playback(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_open_track(_app: AppHandle, track_id: String) -> Result<(), String> {
-    crate::bridge::open_track(&track_id).map_err(|e| e.to_string())
+pub async fn ace_open_track(_app: AppHandle, track_id: String) -> Result<(), AppError> {
+    crate::bridge::open_track(&track_id).map_err(|e| AppError::Playback(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_play(_app: AppHandle) -> Result<(), String> {
-    crate::bridge::play().map_err(|e| e.to_string())
+pub async fn ace_play(_app: AppHandle) -> Result<(), AppError> {
+    crate::bridge::play().map_err(|e| AppError::Playback(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_pause(_app: AppHandle) -> Result<(), String> {
-    crate::bridge::pause().map_err(|e| e.to_string())
+pub async fn ace_pause(_app: AppHandle) -> Result<(), AppError> {
+    crate::bridge::pause().map_err(|e| AppError::Playback(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_stop(_app: AppHandle) -> Result<(), String> {
-    crate::bridge::stop().map_err(|e| e.to_string())
+pub async fn ace_stop(_app: AppHandle) -> Result<(), AppError> {
+    crate::bridge::stop().map_err(|e| AppError::Playback(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_seek(_app: AppHandle, position_ms: u64) -> Result<(), String> {
-    crate::bridge::seek(position_ms).map_err(|e| e.to_string())
+pub async fn ace_seek(_app: AppHandle, position_ms: u64) -> Result<(), AppError> {
+    crate::bridge::seek(position_ms).map_err(|e| AppError::Playback(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_set_volume(_app: AppHandle, db: f64) -> Result<(), String> {
-    crate::bridge::set_volume(db).map_err(|e| e.to_string())
+pub async fn ace_set_volume(_app: AppHandle, db: f64) -> Result<(), AppError> {
+    crate::bridge::set_volume(db).map_err(|e| AppError::Playback(e.to_string()))
 }
 
 #[tauri::command]
@@ -186,30 +188,30 @@ pub async fn ace_set_eq_band(
     freq: f32,
     gain_db: f32,
     q: f32,
-) -> Result<(), String> {
-    crate::bridge::set_eq_band(band, freq, gain_db, q).map_err(|e| e.to_string())
+) -> Result<(), AppError> {
+    crate::bridge::set_eq_band(band, freq, gain_db, q).map_err(|e| AppError::DspError(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_list_devices(_app: AppHandle) -> Result<Vec<AudioDeviceInfo>, String> {
-    crate::bridge::list_devices().map_err(|e| e.to_string())
+pub async fn ace_list_devices(_app: AppHandle) -> Result<Vec<AudioDeviceInfo>, AppError> {
+    crate::bridge::list_devices().map_err(|e| AppError::DeviceNotFound(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_set_output_device(_app: AppHandle, device_id: String) -> Result<(), String> {
-    crate::bridge::set_output_device(&device_id).map_err(|e| e.to_string())
+pub async fn ace_set_output_device(_app: AppHandle, device_id: String) -> Result<(), AppError> {
+    crate::bridge::set_output_device(&device_id).map_err(|e| AppError::DeviceNotFound(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_set_dsp_state(_app: AppHandle, state: DspStatePayload) -> Result<(), String> {
-    crate::bridge::set_dsp_state(state).map_err(|e| e.to_string())
+pub async fn ace_set_dsp_state(_app: AppHandle, state: DspStatePayload) -> Result<(), AppError> {
+    crate::bridge::set_dsp_state(state).map_err(|e| AppError::DspError(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_analyze_file(app: AppHandle, file_path: String) -> Result<FileAnalysisResult, String> {
+pub async fn ace_analyze_file(app: AppHandle, file_path: String) -> Result<FileAnalysisResult, AppError> {
     crate::bridge::analyze_file(&app, &file_path)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| AppError::AnalysisFailed(e.to_string()))
 }
 
 #[tauri::command]
@@ -217,12 +219,12 @@ pub async fn ace_generate_spectrogram(
     _app: AppHandle,
     file_path: String,
     channel_index: u32,
-) -> Result<Vec<f32>, String> {
+) -> Result<Vec<f32>, AppError> {
     crate::bridge::generate_spectrogram(&file_path, channel_index)
-        .map_err(|e| e.to_string())
+        .map_err(|e| AppError::AnalysisFailed(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn ace_scan_folder(app: AppHandle, path: String) -> Result<u32, String> {
-    crate::bridge::scan_folder(&app, &path).map_err(|e| e.to_string())
+pub async fn ace_scan_folder(app: AppHandle, path: String) -> Result<u32, AppError> {
+    crate::bridge::scan_folder(&app, &path).map_err(|e| AppError::ScanFailed(e.to_string()))
 }

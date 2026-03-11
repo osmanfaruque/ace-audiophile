@@ -82,8 +82,8 @@
 
 ### A2.4 Error Handling
 
-- [ ] **A2.4.1** `AppError` enum — `EngineLoad`, `Playback`, `DeviceNotFound`, `AnalysisFailed`
-- [ ] **A2.4.2** `serde_json` serialization → frontend-consumable JSON
+- [x] **A2.4.1** `AppError` enum — `EngineLoad`, `Playback`, `DeviceNotFound`, `AnalysisFailed`
+- [x] **A2.4.2** `serde_json` serialization → frontend-consumable JSON
 
 ---
 
