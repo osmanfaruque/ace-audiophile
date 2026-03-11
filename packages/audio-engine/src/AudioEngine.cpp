@@ -342,6 +342,17 @@ void ace_set_resampler(uint8_t enabled, uint32_t target_hz)
     g_dsp_chain.apply(g_dsp);
 }
 
+// ── Dither — TPDF + noise shaping (A1.3.5) ──────────────────────────────────
+
+void ace_set_dither(uint8_t enabled, int bits, uint8_t noise_shaping)
+{
+    std::lock_guard<std::mutex> lk(g_dsp_mtx);
+    g_dsp.dither_enabled       = enabled;
+    g_dsp.dither_bits          = bits;
+    g_dsp.dither_noise_shaping = noise_shaping;
+    g_dsp_chain.apply(g_dsp);
+}
+
 // ── Pre-amp + clip detection (A1.3.2) ────────────────────────────────────────
 
 void ace_set_preamp(float gain_db)

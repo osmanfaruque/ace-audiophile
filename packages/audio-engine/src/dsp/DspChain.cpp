@@ -26,9 +26,9 @@ void DspChain::apply(const AceDspState& state)
         m_resampler.configure(static_cast<uint32_t>(m_sample_rate),
                               static_cast<uint32_t>(m_sample_rate), 2); // passthrough
 
-    // Dither
+    // Dither (TPDF + noise shaping)
     if (state.dither_enabled)
-        m_dither.configure(state.dither_bits);
+        m_dither.configure(state.dither_bits, state.dither_noise_shaping != 0);
 
     m_configured = true;
 }

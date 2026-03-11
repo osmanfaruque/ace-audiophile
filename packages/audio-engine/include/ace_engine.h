@@ -103,7 +103,8 @@ typedef struct AceDspState {
     float    crossfeed_strength;  /**< 0.0 – 1.0 */
 
     uint8_t  dither_enabled;
-    int      dither_bits;         /**< 16 | 20 | 24 */
+    int      dither_bits;         /**< 16 | 20 | 24 | 32 */
+    uint8_t  dither_noise_shaping; /**< Non-zero = 2nd-order F-weighted noise shaping */
 
     uint8_t  resampler_enabled;
     uint32_t resampler_target_hz;
@@ -130,6 +131,14 @@ void ace_set_crossfeed(uint8_t enabled, float strength);
  *  @param enabled    Non-zero to enable.
  *  @param target_hz  Desired output sample rate (e.g. 96000, 192000). */
 void ace_set_resampler(uint8_t enabled, uint32_t target_hz);
+
+/* ── Dither — TPDF + noise shaping (A1.3.5) ───────────────────────────────── */
+
+/** Enable / disable dither and set target bit depth.
+ *  @param enabled        Non-zero to enable.
+ *  @param bits           Target bit depth (16, 20, 24, or 32).
+ *  @param noise_shaping  Non-zero for 2nd-order F-weighted noise shaping. */
+void ace_set_dither(uint8_t enabled, int bits, uint8_t noise_shaping);
 
 /* ── Pre-amp + clip detection (A1.3.2) ─────────────────────────────────────── */
 
