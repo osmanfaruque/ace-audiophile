@@ -32,9 +32,9 @@
 - [x] **A1.3.6** Virtual surround / spatializer module toggle (desktop-only DSP stage)
 - [x] **A1.3.7** ReplayGain pipeline (track/album mode with true-peak safety)
 - [x] **A1.3.8** Limiter + anti-clip guard after DSP chain
-- [ ] **A1.3.9** Convolver slot (FIR impulse response loader, optional)
-- [ ] **A1.3.10** Channel mixer matrix (L/R swap, mono sum, balance, polarity invert)
-- [ ] **A1.3.11** Crossfade engine (configurable overlap, equal-power curve, optional gapless)
+- [x] **A1.3.9** Convolver slot (FIR impulse response loader, optional)
+- [x] **A1.3.10** Channel mixer matrix (L/R swap, mono sum, balance, polarity invert)
+- [x] **A1.3.11** Crossfade engine (configurable overlap, equal-power curve, optional gapless)
 
 ### A1.4 Flat C API (`ace_engine.h`)
 

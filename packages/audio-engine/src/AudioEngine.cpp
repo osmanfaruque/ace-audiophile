@@ -2,6 +2,7 @@
 
 #include "decoder/FFmpegDecoder.h"
 #include "dsp/DspChain.h"
+#include "dsp/CrossfadeEngine.h"
 #include "output/AudioOutput.h"
 #include "analysis/Spectrogram.h"
 
@@ -39,6 +40,7 @@ static std::atomic<bool>  g_pause_flag{false};
 
 // DSP + metering helpers
 static DspChain           g_dsp_chain;
+static CrossfadeEngine    g_crossfade;
 static Spectrogram        g_spectrogram;
 
 // Output backend (A1.2)
@@ -389,6 +391,49 @@ void ace_set_limiter(uint8_t enabled, float ceiling_db, float release_ms)
     g_dsp.limiter_ceiling_db = ceiling_db;
     g_dsp.limiter_release_ms = release_ms;
     g_dsp_chain.apply(g_dsp);
+}
+
+// ── Convolver — FIR impulse response (A1.3.9) ───────────────────────────────
+
+int ace_load_ir(const char* path)
+{
+    if (!path) return -1;
+    std::lock_guard<std::mutex> lk(g_dsp_mtx);
+    float sr = g_dsp_chain.output_sample_rate();
+    return g_dsp_chain.convolver().load_ir(path, sr);
+}
+
+void ace_unload_ir(void)
+{
+    std::lock_guard<std::mutex> lk(g_dsp_mtx);
+    g_dsp_chain.convolver().unload();
+}
+
+// ── Channel mixer (A1.3.10) ──────────────────────────────────────────────────
+
+void ace_set_channel_mixer(uint8_t enabled, uint8_t swap_lr, uint8_t mono,
+                           float balance, uint8_t invert_l, uint8_t invert_r)
+{
+    std::lock_guard<std::mutex> lk(g_dsp_mtx);
+    g_dsp.mixer_enabled  = enabled;
+    g_dsp.mixer_swap_lr  = swap_lr;
+    g_dsp.mixer_mono     = mono;
+    g_dsp.mixer_balance  = balance;
+    g_dsp.mixer_invert_l = invert_l;
+    g_dsp.mixer_invert_r = invert_r;
+    g_dsp_chain.apply(g_dsp);
+}
+
+// ── Crossfade engine (A1.3.11) ───────────────────────────────────────────────
+
+void ace_set_crossfade(uint8_t mode, int duration_ms)
+{
+    std::lock_guard<std::mutex> lk(g_dsp_mtx);
+    g_dsp.crossfade_mode        = mode;
+    g_dsp.crossfade_duration_ms = duration_ms;
+    float sr = g_dsp_chain.output_sample_rate();
+    g_crossfade.configure(static_cast<CrossfadeEngine::Mode>(mode),
+                          duration_ms, sr, 2);
 }
 
 // ── Pre-amp + clip detection (A1.3.2) ────────────────────────────────────────

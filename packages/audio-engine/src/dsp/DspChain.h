@@ -5,6 +5,8 @@
 #include "ReplayGain.h"
 #include "Crossfeed.h"
 #include "Spatializer.h"
+#include "Convolver.h"
+#include "ChannelMixer.h"
 #include "Dither.h"
 #include "Limiter.h"
 #include "Resampler.h"
@@ -36,6 +38,9 @@ public:
     Resampler&       resampler()       { return m_resampler; }
     const Resampler& resampler() const { return m_resampler; }
 
+    Convolver&       convolver()       { return m_convolver; }
+    const Convolver& convolver() const { return m_convolver; }
+
 private:
     AceDspState m_state{};
     ReplayGain  m_replay_gain;
@@ -43,6 +48,8 @@ private:
     PEQ         m_peq;
     Crossfeed   m_crossfeed;
     Spatializer m_spatializer;
+    Convolver   m_convolver;
+    ChannelMixer m_channel_mixer;
     Resampler   m_resampler;
     Dither      m_dither;
     Limiter     m_limiter;

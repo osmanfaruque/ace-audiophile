@@ -124,6 +124,16 @@ typedef struct AceDspState {
     float    limiter_ceiling_db;   /**< Output ceiling in dBFS (e.g. −0.1) */
     float    limiter_release_ms;   /**< Release time in ms (50–500, default 200) */
 
+    uint8_t  mixer_enabled;        /**< Channel mixer (A1.3.10) */
+    uint8_t  mixer_swap_lr;
+    uint8_t  mixer_mono;
+    float    mixer_balance;        /**< −1.0 (L) … 0 … +1.0 (R) */
+    uint8_t  mixer_invert_l;
+    uint8_t  mixer_invert_r;
+
+    uint8_t  crossfade_mode;       /**< 0=off, 1=crossfade, 2=gapless (A1.3.11) */
+    int      crossfade_duration_ms; /**< 100–12000 ms */
+
     float    preamp_db;           /**< −20 … +20 */
 } AceDspState;
 
@@ -183,6 +193,35 @@ void ace_set_replay_gain(uint8_t mode, float track_gain, float album_gain,
  *  @param ceiling_db   Output ceiling in dBFS (e.g. −0.1). Clamped to ≤ 0.
  *  @param release_ms   Release time in ms (50–500). */
 void ace_set_limiter(uint8_t enabled, float ceiling_db, float release_ms);
+
+/* ── Convolver — FIR impulse response (A1.3.9) ─────────────────────────────── */
+
+/** Load an impulse response WAV file for convolution.
+ *  @param path  Path to a WAV file (16/24/32-bit, mono or stereo).
+ *  @return 0 on success, negative on error. */
+int ace_load_ir(const char* path);
+
+/** Unload the current impulse response. */
+void ace_unload_ir(void);
+
+/* ── Channel mixer (A1.3.10) ────────────────────────────────────────── */
+
+/** Configure the channel mixer matrix.
+ *  @param enabled   Non-zero to enable.
+ *  @param swap_lr   Non-zero to swap L/R channels.
+ *  @param mono      Non-zero for mono sum.
+ *  @param balance   −1.0 (full left) … 0 (center) … +1.0 (full right).
+ *  @param invert_l  Non-zero to invert left channel polarity.
+ *  @param invert_r  Non-zero to invert right channel polarity. */
+void ace_set_channel_mixer(uint8_t enabled, uint8_t swap_lr, uint8_t mono,
+                           float balance, uint8_t invert_l, uint8_t invert_r);
+
+/* ── Crossfade engine (A1.3.11) ───────────────────────────────────────── */
+
+/** Configure crossfade.
+ *  @param mode         0=off, 1=crossfade, 2=gapless.
+ *  @param duration_ms  Overlap duration in ms (100–12000). */
+void ace_set_crossfade(uint8_t mode, int duration_ms);
 
 /* ── Pre-amp + clip detection (A1.3.2) ─────────────────────────────────────── */
 

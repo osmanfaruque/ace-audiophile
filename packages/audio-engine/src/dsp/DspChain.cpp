@@ -29,6 +29,19 @@ void DspChain::apply(const AceDspState& state)
     m_spatializer.configure(state.spatializer_enabled ? state.spatializer_strength : 0.0f,
                             m_sample_rate);
 
+    // Convolver — FIR impulse response (A1.3.9)
+    // IR loading is handled separately via load_ir(); configure is a no-op here.
+
+    // Channel mixer (A1.3.10)
+    if (state.mixer_enabled)
+        m_channel_mixer.configure(state.mixer_swap_lr != 0,
+                                  state.mixer_mono != 0,
+                                  state.mixer_balance,
+                                  state.mixer_invert_l != 0,
+                                  state.mixer_invert_r != 0);
+    else
+        m_channel_mixer.configure(false, false, 0.0f, false, false);
+
     // Resampler (libsoxr VHQ)
     if (state.resampler_enabled && state.resampler_target_hz > 0)
         m_resampler.configure(static_cast<uint32_t>(m_sample_rate),
@@ -108,6 +121,14 @@ int DspChain::process(float* buf, int frames, int channels)
     // 3b. Spatializer — virtual surround (A1.3.6)
     if (m_state.spatializer_enabled)
         m_spatializer.process(buf, frames, channels);
+
+    // 3c. Convolver — FIR impulse response (A1.3.9)
+    if (m_convolver.active())
+        m_convolver.process(buf, frames, channels);
+
+    // 3d. Channel mixer (A1.3.10)
+    if (m_state.mixer_enabled)
+        m_channel_mixer.process(buf, frames, channels);
 
     // 4. Resampler — libsoxr polyphase (A1.3.4)
     //    May change frame count; output goes to internal buffer.
