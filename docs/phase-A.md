@@ -55,9 +55,9 @@
 
 ### A2.1 Cargo Setup
 
-- [ ] **A2.1.1** Add `libloading` crate to `apps/desktop/src-tauri/Cargo.toml`
-- [ ] **A2.1.2** Dynamic library path resolution (`$APPDIR/ace_engine.dll`)
-- [ ] **A2.1.3** Engine init on Tauri `setup` hook (load + `ace_init()`)
+- [x] **A2.1.1** Add `libloading` crate to `apps/desktop/src-tauri/Cargo.toml`
+- [x] **A2.1.2** Dynamic library path resolution (`$APPDIR/ace_engine.dll`)
+- [x] **A2.1.3** Engine init on Tauri `setup` hook (load + `ace_init()`)
 
 ### A2.2 Tauri Commands (`commands.rs`)
 

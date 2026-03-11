@@ -9,6 +9,7 @@ out
 build
 
 # Tauri / Rust
+target
 src-tauri/target
 *.node
 

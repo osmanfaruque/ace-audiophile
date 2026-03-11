@@ -15,7 +15,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // Initialize the C++ audio engine on startup
-            bridge::init(app.handle().clone())?;
+            bridge::init(app.handle().clone()).map_err(|e| e.to_string())?;
 
             #[cfg(debug_assertions)]
             {
