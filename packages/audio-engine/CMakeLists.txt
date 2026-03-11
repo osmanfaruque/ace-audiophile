@@ -149,3 +149,42 @@ if(ACE_BUILD_CLI)
     add_executable(ace_cli test/cli_main.cpp)
     target_link_libraries(ace_cli PRIVATE ace_engine)
 endif()
+
+# ── Unit Tests (Google Test — A1.5) ──────────────────────────────────────────
+option(ACE_BUILD_TESTS "Build Google Test unit tests" ON)
+if(ACE_BUILD_TESTS)
+    FetchContent_Declare(googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.14.0
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+    enable_testing()
+
+    # A1.5.1 — Decoder FLAC hash test
+    add_executable(test_decoder test/test_decoder.cpp)
+    target_link_libraries(test_decoder PRIVATE
+        ace_engine GTest::gtest GTest::gtest_main
+        FFmpeg::avformat FFmpeg::avcodec FFmpeg::avutil FFmpeg::swresample
+    )
+    target_include_directories(test_decoder PRIVATE src include
+        "${kissfft_SOURCE_DIR}" "${soxr_SOURCE_DIR}/src")
+    add_test(NAME DecoderFlacHash COMMAND test_decoder)
+
+    # A1.5.2 — PEQ sweep response test
+    add_executable(test_peq test/test_peq.cpp src/dsp/PEQ.cpp)
+    target_link_libraries(test_peq PRIVATE GTest::gtest GTest::gtest_main)
+    target_include_directories(test_peq PRIVATE src include)
+    add_test(NAME PeqSweepResponse COMMAND test_peq)
+
+    # A1.5.3 — WASAPI exclusive mode test
+    add_executable(test_wasapi test/test_wasapi.cpp)
+    target_link_libraries(test_wasapi PRIVATE
+        ace_engine GTest::gtest GTest::gtest_main
+    )
+    target_include_directories(test_wasapi PRIVATE src include)
+    if(WIN32)
+        target_link_libraries(test_wasapi PRIVATE mmdevapi ole32 avrt)
+    endif()
+    add_test(NAME WasapiExclusive COMMAND test_wasapi)
+endif()

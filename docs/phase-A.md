@@ -45,9 +45,9 @@
 
 ### A1.5 Unit Tests (Google Test)
 
-- [ ] **A1.5.1** Decoder: byte-correct FLAC output hash comparison
-- [ ] **A1.5.2** PEQ: known frequency response verification (sweep signal)
-- [ ] **A1.5.3** WASAPI exclusive mode confirmed (loopback capture)
+- [x] **A1.5.1** Decoder: byte-correct FLAC output hash comparison
+- [x] **A1.5.2** PEQ: known frequency response verification (sweep signal)
+- [x] **A1.5.3** WASAPI exclusive mode confirmed (loopback capture)
 
 ---
 
