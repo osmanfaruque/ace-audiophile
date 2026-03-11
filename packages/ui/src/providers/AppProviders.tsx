@@ -62,5 +62,42 @@ export function AppProviders({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // ── A3.3.4 — SMTC / MediaSession integration ──────────
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
+    const ms = navigator.mediaSession
+
+    // Transport action handlers
+    ms.setActionHandler('play', () => usePlaybackStore.getState().play())
+    ms.setActionHandler('pause', () => usePlaybackStore.getState().pause())
+    ms.setActionHandler('stop', () => usePlaybackStore.getState().stop())
+    ms.setActionHandler('previoustrack', () => usePlaybackStore.getState().prev())
+    ms.setActionHandler('nexttrack', () => usePlaybackStore.getState().next())
+    ms.setActionHandler('seekto', (d) => {
+      if (d.seekTime != null) usePlaybackStore.getState().seek(d.seekTime * 1000)
+    })
+
+    // Sync metadata + playback state on store changes
+    let prevTrackId: string | null = null
+    let prevStatus = ''
+    const unsub = usePlaybackStore.subscribe((s) => {
+      const { currentTrack: track, status } = s
+      if (track && track.id !== prevTrackId) {
+        ms.metadata = new MediaMetadata({
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+        })
+        prevTrackId = track.id
+      }
+      if (status !== prevStatus) {
+        ms.playbackState = status === 'playing' ? 'playing' : status === 'paused' ? 'paused' : 'none'
+        prevStatus = status
+      }
+    })
+
+    return unsub
+  }, [])
+
   return <>{children}</>
 }

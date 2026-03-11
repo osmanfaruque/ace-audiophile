@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { DspChainState, EqBand, EqFilterType, EqPreset, FftFrame, LevelMeter } from '@ace/types'
 import { getAudioEngine } from '@/lib/audioEngine'
+import { SYSTEM_PRESETS, exportPreset, importPreset } from '@/lib/eqPresets'
 
 const DEFAULT_BANDS: EqBand[] = Array.from({ length: 60 }, (_, i) => ({
   id: i,
@@ -51,6 +52,30 @@ const DEFAULT_DSP: DspChainState = {
   tempoRatio: 1.0,
 }
 
+// ── DSP Profiles (A3.3.6) ─────────────────────────────────
+export interface DspProfile {
+  id: string
+  name: string
+  isSystem: boolean
+  state: DspChainState
+}
+
+const SYSTEM_PROFILES: DspProfile[] = [
+  { id: 'neutral', name: 'Neutral', isSystem: true, state: { ...DEFAULT_DSP, eqEnabled: false } },
+  { id: 'analytical', name: 'Analytical', isSystem: true, state: {
+    ...DEFAULT_DSP, eqEnabled: true, crossfeedEnabled: false,
+    stereoWidthEnabled: false, replayGainMode: 'off',
+  }},
+  { id: 'fun', name: 'Fun', isSystem: true, state: {
+    ...DEFAULT_DSP, eqEnabled: true, crossfeedEnabled: true, crossfeedLevel: 0.3, crossfeedCutoff: 700,
+    stereoWidthEnabled: true, stereoWidth: 1.3,
+  }},
+  { id: 'night', name: 'Night Mode', isSystem: true, state: {
+    ...DEFAULT_DSP, eqEnabled: true, compressorEnabled: true,
+    compressorThresholdDb: -24, compressorRatio: 3, compressorAttackMs: 10, compressorReleaseMs: 150,
+  }},
+]
+
 interface DspStore {
   state: DspChainState
   presets: EqPreset[]
@@ -60,10 +85,21 @@ interface DspStore {
   resetAllBands: () => void
   setBandEnabled: (bandId: number, enabled: boolean) => void
 
-  // Preset actions
+  // Preset actions (A3.3.5)
   loadPreset: (preset: EqPreset) => void
   savePreset: (name: string) => void
   deletePreset: (id: string) => void
+  importPresetJson: (json: string) => EqPreset | null
+  exportPresetJson: (id: string) => string | null
+  allPresets: () => EqPreset[]
+
+  // DSP Profile actions (A3.3.6)
+  profiles: DspProfile[]
+  activeProfileId: string | null
+  loadProfile: (id: string) => void
+  saveProfile: (name: string) => void
+  deleteProfile: (id: string) => void
+  allProfiles: () => DspProfile[]
 
   // Global DSP toggles
   setEqEnabled: (enabled: boolean) => void
@@ -90,6 +126,8 @@ export const useDspStore = create<DspStore>()(
     (set, get) => ({
       state: DEFAULT_DSP,
       presets: [],
+      profiles: [],
+      activeProfileId: null,
       fftFrame: null,
       levelMeter: null,
 
@@ -97,7 +135,11 @@ export const useDspStore = create<DspStore>()(
         set((s) => {
           const bands = s.state.bands.map((b) => (b.id === bandId ? { ...b, ...patch } : b))
           const newState = { ...s.state, bands }
-          getAudioEngine().setDspState(newState)
+          // A3.3.2 — Per-band update for responsive EQ drag
+          const updated = bands.find((b) => b.id === bandId)
+          if (updated) {
+            getAudioEngine().setEqBand(updated.id, updated.frequency, updated.gainDb, updated.q)
+          }
           return { state: newState }
         })
       },
@@ -140,6 +182,46 @@ export const useDspStore = create<DspStore>()(
       deletePreset: (id) =>
         set((s) => ({ presets: s.presets.filter((p) => p.id !== id) })),
 
+      // A3.3.5 — Preset bank import/export
+      importPresetJson: (json) => {
+        const preset = importPreset(json)
+        if (preset) set((s) => ({ presets: [...s.presets, preset] }))
+        return preset
+      },
+
+      exportPresetJson: (id) => {
+        const all = [...SYSTEM_PRESETS, ...get().presets]
+        const preset = all.find((p) => p.id === id)
+        return preset ? exportPreset(preset) : null
+      },
+
+      allPresets: () => [...SYSTEM_PRESETS, ...get().presets],
+
+      // A3.3.6 — DSP profile stack
+      loadProfile: (id) => {
+        const all = [...SYSTEM_PROFILES, ...get().profiles]
+        const profile = all.find((p) => p.id === id)
+        if (!profile) return
+        const newState = { ...profile.state }
+        getAudioEngine().setDspState(newState)
+        set({ state: newState, activeProfileId: id })
+      },
+
+      saveProfile: (name) => {
+        const profile: DspProfile = {
+          id: `profile-${Date.now()}`,
+          name,
+          isSystem: false,
+          state: { ...get().state },
+        }
+        set((s) => ({ profiles: [...s.profiles, profile] }))
+      },
+
+      deleteProfile: (id) =>
+        set((s) => ({ profiles: s.profiles.filter((p) => p.id !== id) })),
+
+      allProfiles: () => [...SYSTEM_PROFILES, ...get().profiles],
+
       setEqEnabled: (eqEnabled) => {
         set((s) => {
           const newState = { ...s.state, eqEnabled }
@@ -178,7 +260,7 @@ export const useDspStore = create<DspStore>()(
     }),
     {
       name: 'ace-dsp-state',
-      partialize: (s) => ({ state: s.state, presets: s.presets }),
+      partialize: (s) => ({ state: s.state, presets: s.presets, profiles: s.profiles, activeProfileId: s.activeProfileId }),
     }
   )
 )

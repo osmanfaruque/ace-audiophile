@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import {
   SkipBack, Play, Pause, SkipForward, Square,
   Repeat, Repeat1, Shuffle, FolderOpen, ListMusic,
@@ -13,6 +13,7 @@ import { getAudioEngine } from '@/lib/audioEngine'
 import { SeekBar } from '@/components/player/SeekBar'
 import { VolumeSlider } from '@/components/player/VolumeSlider'
 import { SpectrumBars } from '@/components/player/SpectrumBars'
+import { LevelMeter } from '@/components/player/LevelMeter'
 import { formatDuration, formatSampleRate } from '@/lib/utils'
 import type { AudioTrack, AudioCodec } from '@ace/types'
 
@@ -203,15 +204,7 @@ function BeautifulPlayer() {
   const store = usePlaybackStore()
   const { status, currentTrack, positionMs, durationMs, volume, repeat, shuffle } = store
 
-  useEffect(() => {
-    const engine = getAudioEngine()
-    let unPos: (() => void) | undefined
-    let unTrack: (() => void) | undefined
-    engine.onPositionUpdate((ms) => store._onPositionUpdate(ms)).then((u) => (unPos = u)).catch(() => {})
-    engine.onTrackChange((t) => store._onTrackChange(t)).then((u) => (unTrack = u)).catch(() => {})
-    return () => { unPos?.(); unTrack?.() }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // Event listeners are handled globally in AppProviders (A3.2)
 
   const handleOpenFiles = useCallback(async () => {
     const paths = await openAudioFiles()
@@ -222,7 +215,7 @@ function BeautifulPlayer() {
       await getAudioEngine().openFile(tracks[0].filePath)
       store._onTrackChange(tracks[0])
     } catch {}
-    await store.play(tracks[0].id)
+    await store.play()
   }, [store])
 
   const handlePlayPause = useCallback(async () => {
@@ -417,6 +410,9 @@ function BeautifulPlayer() {
 
             <VolumeSlider volume={volume} onChange={store.setVolume} className="shrink-0" />
 
+            {/* A3.3.7 — Level meter */}
+            <LevelMeter height={36} compact className="shrink-0 w-20" />
+
             <button onClick={handleOpenFiles}
               className="p-2 rounded-lg hover:bg-white/10 shrink-0 transition-colors"
               style={{ color: 'var(--ace-text-muted)' }} title="Open files">
@@ -437,15 +433,7 @@ function TechiePlayer() {
   const store = usePlaybackStore()
   const { status, currentTrack, positionMs, durationMs, volume, repeat, shuffle, queue } = store
 
-  useEffect(() => {
-    const engine = getAudioEngine()
-    let unPos: (() => void) | undefined
-    let unTrack: (() => void) | undefined
-    engine.onPositionUpdate((ms) => store._onPositionUpdate(ms)).then((u) => (unPos = u)).catch(() => {})
-    engine.onTrackChange((t) => store._onTrackChange(t)).then((u) => (unTrack = u)).catch(() => {})
-    return () => { unPos?.(); unTrack?.() }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // Event listeners are handled globally in AppProviders (A3.2)
 
   const handleOpenFiles = useCallback(async () => {
     const paths = await openAudioFiles()
@@ -456,7 +444,7 @@ function TechiePlayer() {
       await getAudioEngine().openFile(tracks[0].filePath)
       store._onTrackChange(tracks[0])
     } catch {}
-    await store.play(tracks[0].id)
+    await store.play()
   }, [store])
 
   const handlePlayPause = useCallback(async () => {
@@ -612,9 +600,14 @@ function TechiePlayer() {
         </div>
       </div>
 
-      {/* ── Spectrum analyzer ─────────────────────────────── */}
-      <div className="shrink-0 border-t" style={{ height: 68, borderColor: 'var(--ace-border)', background: '#050508' }}>
-        <SpectrumBars height={68} barCount={80} />
+      {/* ── Spectrum analyzer + Level meter (A3.3.7) ──── */}
+      <div className="shrink-0 flex border-t" style={{ height: 68, borderColor: 'var(--ace-border)', background: '#050508' }}>
+        <div className="flex-1">
+          <SpectrumBars height={68} barCount={80} />
+        </div>
+        <div className="shrink-0 border-l" style={{ width: 140, borderColor: 'var(--ace-border)' }}>
+          <LevelMeter height={68} />
+        </div>
       </div>
 
       {/* ── Status bar ─────────────────────────────────────── */}

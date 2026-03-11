@@ -106,13 +106,13 @@
 
 ### A3.3 View Wiring
 
-- [ ] **A3.3.1** Transport controls (play/pause/stop/next/prev) → real playback
-- [ ] **A3.3.2** EqualizerView drag → `ace_set_eq_band` per band
-- [ ] **A3.3.3** SeekBar → `ace_seek`, VolumeSlider → `ace_set_volume`
-- [ ] **A3.3.4** SMTC (System Media Transport Controls) update on track change
-- [ ] **A3.3.5** Preset bank manager (large preset catalog + import/export)
-- [ ] **A3.3.6** DSP profile stack UI (quick toggle between "Neutral", "Analytical", "Fun")
-- [ ] **A3.3.7** Real-time level meter + DR display (peak, RMS, LUFS bar in PlayerView)
+- [x] **A3.3.1** Transport controls (play/pause/stop/next/prev) → real playback
+- [x] **A3.3.2** EqualizerView drag → `ace_set_eq_band` per band
+- [x] **A3.3.3** SeekBar → `ace_seek`, VolumeSlider → `ace_set_volume`
+- [x] **A3.3.4** SMTC (System Media Transport Controls) update on track change
+- [x] **A3.3.5** Preset bank manager (large preset catalog + import/export)
+- [x] **A3.3.6** DSP profile stack UI (quick toggle between "Neutral", "Analytical", "Fun")
+- [x] **A3.3.7** Real-time level meter + DR display (peak, RMS, LUFS bar in PlayerView)
 
 ### A3.4 Dual UI Mode
 

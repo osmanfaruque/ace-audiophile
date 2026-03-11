@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef, useState, useMemo } from 'react'
-import { Power, RotateCcw, Save, ChevronDown } from 'lucide-react'
+import { Power, RotateCcw, Save, ChevronDown, Download, Upload, Layers } from 'lucide-react'
 import { useDspStore } from '@/store/dspStore'
 import { useAppStore } from '@/store/appStore'
 import type { EqBand } from '@ace/types'
@@ -69,7 +69,7 @@ export function EqualizerView() {
   const { uiMode } = useAppStore()
   const techie     = uiMode === 'techie'
 
-  const { state, presets, updateBand, resetAllBands, setEqEnabled, setPreampDb, savePreset } = dspStore
+  const { state, updateBand, resetAllBands, setEqEnabled, setPreampDb, savePreset, loadPreset, deletePreset, allPresets, allProfiles, loadProfile, activeProfileId } = dspStore
   const { eqEnabled, bands, preampDb } = state
 
   const svgRef  = useRef<SVGSVGElement>(null)
@@ -77,6 +77,11 @@ export function EqualizerView() {
   const [hoveredBand, setHoveredBand] = useState<number | null>(null)
   const [presetName, setPresetName] = useState('')
   const [showSaveInput, setShowSaveInput] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [importText, setImportText] = useState('')
+
+  const presets  = allPresets()
+  const profiles = allProfiles()
 
   // Compute SVG points for curve
   const curvePoints = useMemo(() =>
@@ -158,7 +163,7 @@ export function EqualizerView() {
           EQ {eqEnabled ? 'On' : 'Off'}
         </button>
 
-        {/* Preset selector */}
+        {/* Preset selector (A3.3.5 — full catalog) */}
         <div className="flex items-center gap-2 ml-2">
           <span className="text-xs" style={{ color: 'var(--ace-text-muted)' }}>Preset</span>
           <div className="relative">
@@ -170,20 +175,38 @@ export function EqualizerView() {
                 border: '1px solid var(--ace-border)',
                 fontFamily: techie ? 'var(--ace-font-mono)' : undefined,
               }}
+              value={state.eqPresetId ?? ''}
               onChange={(e) => {
                 const preset = presets.find((p) => p.id === e.target.value)
-                if (preset) preset.bands.forEach((b) => updateBand(b.id, b))
+                if (preset) loadPreset(preset)
               }}
-              defaultValue=""
             >
               <option value="" disabled>— Select —</option>
-              {presets.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
+              <optgroup label="System Presets">
+                {presets.filter((p) => p.isSystem).map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </optgroup>
+              {presets.some((p) => !p.isSystem) && (
+                <optgroup label="User Presets">
+                  {presets.filter((p) => !p.isSystem).map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"
               style={{ color: 'var(--ace-text-muted)' }} />
           </div>
+          {/* Delete user preset */}
+          {state.eqPresetId && !presets.find((p) => p.id === state.eqPresetId)?.isSystem && (
+            <button
+              onClick={() => { if (state.eqPresetId) deletePreset(state.eqPresetId) }}
+              className="text-xs px-1.5 py-0.5 rounded hover:bg-red-500/20 transition-colors"
+              style={{ color: 'var(--ace-error)' }}
+              title="Delete preset"
+            >✕</button>
+          )}
         </div>
 
         {/* Preamp */}
@@ -234,9 +257,84 @@ export function EqualizerView() {
             style={{ color: 'var(--ace-text-secondary)' }}
           >
             <Save size={13} />
-            Save Preset
+            Save
           </button>
         )}
+
+        {/* Import/Export (A3.3.5) */}
+        <button
+          onClick={() => {
+            const json = dspStore.exportPresetJson(state.eqPresetId ?? 'flat')
+            if (json) {
+              navigator.clipboard.writeText(json)
+              console.log('[EQ] Preset exported to clipboard')
+            }
+          }}
+          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs transition-colors hover:bg-white/10"
+          style={{ color: 'var(--ace-text-secondary)' }}
+          title="Export current preset to clipboard"
+        >
+          <Download size={12} />
+        </button>
+
+        <button
+          onClick={() => setShowImport(!showImport)}
+          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs transition-colors hover:bg-white/10"
+          style={{ color: showImport ? 'var(--ace-accent)' : 'var(--ace-text-secondary)' }}
+          title="Import preset from JSON"
+        >
+          <Upload size={12} />
+        </button>
+      </div>
+
+      {/* Import panel */}
+      {showImport && (
+        <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b"
+          style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)' }}>
+          <input
+            autoFocus
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+            placeholder="Paste preset JSON…"
+            className="flex-1 px-2 py-1 rounded text-xs focus:outline-none"
+            style={{ background: 'var(--ace-surface)', color: 'var(--ace-text-primary)', border: '1px solid var(--ace-border)' }}
+          />
+          <button
+            onClick={() => {
+              const preset = dspStore.importPresetJson(importText)
+              if (preset) { loadPreset(preset); setShowImport(false); setImportText('') }
+            }}
+            className="px-3 py-1 rounded text-xs"
+            style={{ background: 'var(--ace-accent)', color: '#fff' }}
+          >Import</button>
+          <button onClick={() => { setShowImport(false); setImportText('') }}
+            className="px-2 py-1 rounded text-xs hover:bg-white/10"
+            style={{ color: 'var(--ace-text-muted)' }}>✕</button>
+        </div>
+      )}
+
+      {/* ── DSP Profile Quick-Toggle (A3.3.6) ───────────── */}
+      <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 border-b"
+        style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg)' }}>
+        <Layers size={13} style={{ color: 'var(--ace-text-muted)' }} />
+        <span className="text-xs" style={{ color: 'var(--ace-text-muted)' }}>Profile</span>
+        {profiles.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => loadProfile(p.id)}
+            className={cn(
+              'px-3 py-1 rounded-full text-xs font-medium transition-all',
+              activeProfileId === p.id ? 'shadow-md' : 'opacity-60 hover:opacity-100',
+            )}
+            style={{
+              background: activeProfileId === p.id ? 'var(--ace-accent)' : 'var(--ace-surface)',
+              color: activeProfileId === p.id ? '#fff' : 'var(--ace-text-secondary)',
+              border: `1px solid ${activeProfileId === p.id ? 'var(--ace-accent)' : 'var(--ace-border)'}`,
+            }}
+          >
+            {p.name}
+          </button>
+        ))}
       </div>
 
       {/* ── EQ Graph ─────────────────────────────────────────── */}
