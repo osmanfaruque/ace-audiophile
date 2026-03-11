@@ -27,6 +27,9 @@ interface AppState {
   crossfadeDurationMs: number
   replayGainMode: 'off' | 'track' | 'album'
 
+  // Error notification (not persisted)
+  lastError: string | null
+
   // Actions
   setUiMode: (mode: UiMode) => void
   setColorScheme: (scheme: ColorScheme) => void
@@ -44,6 +47,7 @@ interface AppState {
   setGapless: (v: boolean) => void
   setCrossfadeDurationMs: (v: number) => void
   setReplayGainMode: (mode: 'off' | 'track' | 'album') => void
+  setLastError: (error: string | null) => void
   init: () => Promise<void>
 }
 
@@ -85,6 +89,7 @@ export const useAppStore = create<AppState>()(
       gapless: true,
       crossfadeDurationMs: 0,
       replayGainMode: 'off',
+      lastError: null,
 
       setUiMode: (uiMode) => set({ uiMode }),
       setColorScheme: (colorScheme) => set({ colorScheme }),
@@ -102,6 +107,7 @@ export const useAppStore = create<AppState>()(
       setGapless: (gapless) => set({ gapless }),
       setCrossfadeDurationMs: (crossfadeDurationMs) => set({ crossfadeDurationMs }),
       setReplayGainMode: (replayGainMode) => set({ replayGainMode }),
+      setLastError: (lastError) => set({ lastError }),
 
       init: async () => {
         try {

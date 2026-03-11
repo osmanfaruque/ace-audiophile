@@ -91,18 +91,18 @@
 
 ### A3.1 `audioEngine.ts` — Real `invoke()` Calls
 
-- [ ] **A3.1.1** `openFile`, `play`, `pause`, `stop`, `seek`
-- [ ] **A3.1.2** `setVolume`, `setEqBand`, `applyDspState`
-- [ ] **A3.1.3** `getDevices`, `setDevice`
-- [ ] **A3.1.4** `analyzeFile` → `AnalysisResult`
-- [ ] **A3.1.5** `scanFolder` → progress event stream
+- [x] **A3.1.1** `openFile`, `play`, `pause`, `stop`, `seek`
+- [x] **A3.1.2** `setVolume`, `setEqBand`, `applyDspState`
+- [x] **A3.1.3** `getDevices`, `setDevice`
+- [x] **A3.1.4** `analyzeFile` → `AnalysisResult`
+- [x] **A3.1.5** `scanFolder` → progress event stream
 
 ### A3.2 Event Listeners (AppShell)
 
-- [ ] **A3.2.1** `fft-frame` → `dspStore.fftBins` (SpectrumBars, AnalyzerView)
-- [ ] **A3.2.2** `position-update` → `playbackStore.positionMs` (SeekBar)
-- [ ] **A3.2.3** `track-change` → `playbackStore.currentTrack` (PlayerView)
-- [ ] **A3.2.4** `engine-error` → toast notification
+- [x] **A3.2.1** `fft-frame` → `dspStore.fftBins` (SpectrumBars, AnalyzerView)
+- [x] **A3.2.2** `position-update` → `playbackStore.positionMs` (SeekBar)
+- [x] **A3.2.3** `track-change` → `playbackStore.currentTrack` (PlayerView)
+- [x] **A3.2.4** `engine-error` → toast notification
 
 ### A3.3 View Wiring
 

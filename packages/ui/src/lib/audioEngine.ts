@@ -50,6 +50,46 @@ async function listen<T>(
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Raw event payloads from Rust bridge (snake_case)
+// ─────────────────────────────────────────────────────────────
+interface RustFftFrameEvent {
+  bins_l: number[]
+  bins_r: number[]
+  timestamp_ms: number
+}
+
+interface RustLevelMeterEvent {
+  peak_l_db: number
+  peak_r_db: number
+  rms_l_db: number
+  rms_r_db: number
+  lufs_integrated: number
+}
+
+interface RustPositionEvent {
+  position_ms: number
+}
+
+interface RustTrackInfo {
+  file_path: string
+  codec: string
+  sample_rate: number
+  bit_depth: number
+  channels: number
+  duration_ms: number
+}
+
+interface RustScanProgress {
+  file: string
+  count: number
+}
+
+interface RustScanComplete {
+  total: number
+  folder: string
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Engine Interface
 // ─────────────────────────────────────────────────────────────
 export interface IAudioEngine {
@@ -57,25 +97,30 @@ export interface IAudioEngine {
   initialize(): Promise<void>
   destroy(): Promise<void>
 
-  // Playback
+  // Playback (A3.1.1)
   openTrack(trackId: string): Promise<void>
-  openFile(filePath: string): Promise<void>
+  openFile(filePath: string): Promise<RustTrackInfo>
   play(): Promise<void>
   pause(): void
   stop(): void
   seek(positionMs: number): void
+  /** Accepts linear 0–1 volume; converted to dB for the engine */
   setVolume(volume: number): void
 
-  // Devices
+  // DSP (A3.1.2)
+  setEqBand(band: number, freq: number, gainDb: number, q: number): void
+  setDspState(state: DspChainState): void
+
+  // Devices (A3.1.3)
   listDevices(): Promise<AudioDevice[]>
   setOutputDevice(deviceId: string): Promise<void>
 
-  // DSP
-  setDspState(state: DspChainState): void
-
-  // Analysis
+  // Analysis (A3.1.4)
   analyzeFile(filePath: string): Promise<FileAnalysisResult>
   generateSpectrogram(filePath: string, channelIndex: number): Promise<Float32Array>
+
+  // Scanning (A3.1.5)
+  scanFolder(path: string, onProgress?: (file: string, count: number) => void): Promise<number>
 
   // Real-time event subscriptions
   onFftFrame(handler: (frame: FftFrame) => void): Promise<() => void>
@@ -97,12 +142,14 @@ class TauriAudioEngine implements IAudioEngine {
     await invoke('ace_engine_destroy')
   }
 
+  // ── A3.1.1 — Playback ─────────────────────────────────
+
   async openTrack(trackId: string) {
     await invoke('ace_open_track', { trackId })
   }
 
-  async openFile(filePath: string) {
-    await invoke('ace_open_file', { filePath })
+  async openFile(filePath: string): Promise<RustTrackInfo> {
+    return invoke<RustTrackInfo>('ace_open_file', { filePath })
   }
 
   async play() {
@@ -122,8 +169,22 @@ class TauriAudioEngine implements IAudioEngine {
   }
 
   setVolume(volume: number) {
-    invoke('ace_set_volume', { volume }).catch(console.error)
+    // Convert linear 0–1 to dB (Rust engine expects dB)
+    const db = volume > 0 ? 20 * Math.log10(volume) : -100
+    invoke('ace_set_volume', { db }).catch(console.error)
   }
+
+  // ── A3.1.2 — DSP ──────────────────────────────────────
+
+  setEqBand(band: number, freq: number, gainDb: number, q: number) {
+    invoke('ace_set_eq_band', { band, freq, gainDb, q }).catch(console.error)
+  }
+
+  setDspState(state: DspChainState) {
+    invoke('ace_set_dsp_state', { state }).catch(console.error)
+  }
+
+  // ── A3.1.3 — Devices ──────────────────────────────────
 
   async listDevices(): Promise<AudioDevice[]> {
     return invoke<AudioDevice[]>('ace_list_devices')
@@ -133,10 +194,7 @@ class TauriAudioEngine implements IAudioEngine {
     await invoke('ace_set_output_device', { deviceId })
   }
 
-  setDspState(state: DspChainState) {
-    // Debounced — send to engine; fast-path, no await
-    invoke('ace_set_dsp_state', { state }).catch(console.error)
-  }
+  // ── A3.1.4 — Analysis ─────────────────────────────────
 
   async analyzeFile(filePath: string): Promise<FileAnalysisResult> {
     return invoke<FileAnalysisResult>('ace_analyze_file', { filePath })
@@ -147,25 +205,114 @@ class TauriAudioEngine implements IAudioEngine {
     return new Float32Array(raw)
   }
 
+  // ── A3.1.5 — Folder scanning ──────────────────────────
+
+  async scanFolder(
+    path: string,
+    onProgress?: (file: string, count: number) => void
+  ): Promise<number> {
+    let unlistenProgress: (() => void) | undefined
+    let unlistenComplete: (() => void) | undefined
+
+    if (onProgress) {
+      unlistenProgress = await listen<RustScanProgress>(
+        'ace://scan-progress',
+        (p) => onProgress(p.file, p.count)
+      )
+    }
+
+    try {
+      const total = await invoke<number>('ace_scan_folder', { path })
+      return total
+    } finally {
+      unlistenProgress?.()
+      unlistenComplete?.()
+    }
+  }
+
   // ── Real-time events ─────────────────────────────────────
+
   onFftFrame(handler: (frame: FftFrame) => void) {
-    return listen<FftFrame>('ace://fft-frame', handler)
+    return listen<RustFftFrameEvent>('ace://fft-frame', (raw) => {
+      handler({
+        channelIndex: 0,
+        bins: new Float32Array(raw.bins_l),
+        timestamp: raw.timestamp_ms,
+        // Also expose right channel for stereo views
+        ...(raw.bins_r && { binsR: new Float32Array(raw.bins_r) }),
+      } as FftFrame)
+    })
   }
 
   onLevelMeter(handler: (meter: LevelMeter) => void) {
-    return listen<LevelMeter>('ace://level-meter', handler)
+    return listen<RustLevelMeterEvent>('ace://level-meter', (raw) => {
+      handler({
+        channels: [
+          { index: 0, peakDb: raw.peak_l_db, rmsDb: raw.rms_l_db, lufsShortTerm: 0, lufsIntegrated: raw.lufs_integrated, truePeakDb: raw.peak_l_db, clipping: raw.peak_l_db >= 0 },
+          { index: 1, peakDb: raw.peak_r_db, rmsDb: raw.rms_r_db, lufsShortTerm: 0, lufsIntegrated: raw.lufs_integrated, truePeakDb: raw.peak_r_db, clipping: raw.peak_r_db >= 0 },
+        ],
+        timestamp: Date.now(),
+      })
+    })
   }
 
   onPositionUpdate(handler: (positionMs: number) => void) {
-    return listen<number>('ace://position-update', handler)
+    return listen<RustPositionEvent>('ace://position-update', (raw) => {
+      handler(raw.position_ms)
+    })
   }
 
   onTrackChange(handler: (track: AudioTrack | null) => void) {
-    return listen<AudioTrack | null>('ace://track-change', handler)
+    return listen<RustTrackInfo | null>('ace://track-change', (raw) => {
+      if (!raw) {
+        handler(null)
+        return
+      }
+      // Map RustTrackInfo → minimal AudioTrack for the store
+      handler({
+        id: raw.file_path,
+        filePath: raw.file_path,
+        title: raw.file_path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') ?? 'Unknown',
+        artist: '',
+        albumArtist: '',
+        album: '',
+        genre: '',
+        year: null,
+        trackNumber: null,
+        totalTracks: null,
+        discNumber: null,
+        totalDiscs: null,
+        comment: '',
+        durationMs: raw.duration_ms,
+        sampleRate: raw.sample_rate,
+        bitDepth: raw.bit_depth,
+        channels: raw.channels,
+        codec: raw.codec as AudioTrack['codec'],
+        bitrateKbps: 0,
+        fileSizeBytes: 0,
+        effectiveBitDepth: null,
+        dynamicRange: null,
+        lufs: null,
+        truePeak: null,
+        isLossyTranscode: null,
+        lossyConfidence: null,
+        replayGainTrack: null,
+        replayGainAlbum: null,
+        musicBrainzId: null,
+        acoustId: null,
+        albumId: '',
+        dateAdded: Date.now(),
+        dateModified: Date.now(),
+        lastPlayed: null,
+        playCount: 0,
+      })
+    })
   }
 
   onError(handler: (error: string) => void) {
-    return listen<string>('ace://engine-error', handler)
+    return listen<{ message: string }>('ace://engine-error', (raw) => {
+      handler(raw.message)
+    })
   }
 }
 

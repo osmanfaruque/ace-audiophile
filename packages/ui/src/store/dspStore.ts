@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { DspChainState, EqBand, EqFilterType, EqPreset } from '@ace/types'
+import type { DspChainState, EqBand, EqFilterType, EqPreset, FftFrame, LevelMeter } from '@ace/types'
 import { getAudioEngine } from '@/lib/audioEngine'
 
 const DEFAULT_BANDS: EqBand[] = Array.from({ length: 60 }, (_, i) => ({
@@ -77,6 +77,12 @@ interface DspStore {
   setCompressorEnabled: (enabled: boolean) => void
   setStereoWidthEnabled: (enabled: boolean) => void
   setStereoWidth: (width: number) => void
+
+  // Real-time (not persisted)
+  fftFrame: FftFrame | null
+  levelMeter: LevelMeter | null
+  _setFftFrame: (frame: FftFrame) => void
+  _setLevelMeter: (meter: LevelMeter) => void
 }
 
 export const useDspStore = create<DspStore>()(
@@ -84,6 +90,8 @@ export const useDspStore = create<DspStore>()(
     (set, get) => ({
       state: DEFAULT_DSP,
       presets: [],
+      fftFrame: null,
+      levelMeter: null,
 
       updateBand: (bandId, patch) => {
         set((s) => {
@@ -164,6 +172,9 @@ export const useDspStore = create<DspStore>()(
         set((s) => ({ state: { ...s.state, stereoWidthEnabled } })),
       setStereoWidth: (stereoWidth) =>
         set((s) => ({ state: { ...s.state, stereoWidth } })),
+
+      _setFftFrame: (fftFrame) => set({ fftFrame }),
+      _setLevelMeter: (levelMeter) => set({ levelMeter }),
     }),
     {
       name: 'ace-dsp-state',
