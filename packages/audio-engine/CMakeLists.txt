@@ -88,6 +88,7 @@ set(ACE_SOURCES
     src/dsp/PEQ.cpp
     src/dsp/PreAmp.cpp
     src/dsp/Crossfeed.cpp
+    src/dsp/Spatializer.cpp
     src/dsp/Dither.cpp
     src/dsp/Resampler.cpp
     src/analysis/Spectrogram.cpp

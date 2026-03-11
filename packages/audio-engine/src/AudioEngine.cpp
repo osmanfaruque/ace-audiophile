@@ -353,6 +353,16 @@ void ace_set_dither(uint8_t enabled, int bits, uint8_t noise_shaping)
     g_dsp_chain.apply(g_dsp);
 }
 
+// ── Spatializer — virtual surround (A1.3.6) ─────────────────────────────────
+
+void ace_set_spatializer(uint8_t enabled, float strength)
+{
+    std::lock_guard<std::mutex> lk(g_dsp_mtx);
+    g_dsp.spatializer_enabled  = enabled;
+    g_dsp.spatializer_strength = strength;
+    g_dsp_chain.apply(g_dsp);
+}
+
 // ── Pre-amp + clip detection (A1.3.2) ────────────────────────────────────────
 
 void ace_set_preamp(float gain_db)

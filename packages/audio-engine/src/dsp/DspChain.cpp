@@ -18,6 +18,10 @@ void DspChain::apply(const AceDspState& state)
     // Crossfeed (Bauer BS2B)
     m_crossfeed.configure(state.crossfeed_enabled ? state.crossfeed_strength : 0.0f, m_sample_rate);
 
+    // Spatializer — virtual surround (A1.3.6)
+    m_spatializer.configure(state.spatializer_enabled ? state.spatializer_strength : 0.0f,
+                            m_sample_rate);
+
     // Resampler (libsoxr VHQ)
     if (state.resampler_enabled && state.resampler_target_hz > 0)
         m_resampler.configure(static_cast<uint32_t>(m_sample_rate),
@@ -40,6 +44,8 @@ void DspChain::set_sample_rate(float sr)
         m_peq.configure(m_state.bands, m_sample_rate);
     if (m_configured && m_state.crossfeed_enabled)
         m_crossfeed.configure(m_state.crossfeed_strength, m_sample_rate);
+    if (m_configured && m_state.spatializer_enabled)
+        m_spatializer.configure(m_state.spatializer_strength, m_sample_rate);
     if (m_configured && m_state.resampler_enabled && m_state.resampler_target_hz > 0)
         m_resampler.configure(static_cast<uint32_t>(m_sample_rate),
                               m_state.resampler_target_hz, 2);
@@ -82,6 +88,10 @@ int DspChain::process(float* buf, int frames, int channels)
     // 3. Crossfeed (Bauer stereo-to-binaural)
     if (m_state.crossfeed_enabled)
         m_crossfeed.process(buf, frames, channels);
+
+    // 3b. Spatializer — virtual surround (A1.3.6)
+    if (m_state.spatializer_enabled)
+        m_spatializer.process(buf, frames, channels);
 
     // 4. Resampler — libsoxr polyphase (A1.3.4)
     //    May change frame count; output goes to internal buffer.

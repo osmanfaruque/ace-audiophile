@@ -3,6 +3,7 @@
 #include "PEQ.h"
 #include "PreAmp.h"
 #include "Crossfeed.h"
+#include "Spatializer.h"
 #include "Dither.h"
 #include "Resampler.h"
 #include <vector>
@@ -38,6 +39,7 @@ private:
     PreAmp      m_preamp;
     PEQ         m_peq;
     Crossfeed   m_crossfeed;
+    Spatializer m_spatializer;
     Resampler   m_resampler;
     Dither      m_dither;
     float       m_sample_rate{44100.0f};

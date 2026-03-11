@@ -29,7 +29,7 @@
 - [x] **A1.3.3** Crossfeed — Bauer binaural stereo-to-stereo
 - [x] **A1.3.4** Polyphase resampler — libsoxr integration
 - [x] **A1.3.5** TPDF dither + noise shaping (16-bit / 24-bit / 32-bit output)
-- [ ] **A1.3.6** Virtual surround / spatializer module toggle (desktop-only DSP stage)
+- [x] **A1.3.6** Virtual surround / spatializer module toggle (desktop-only DSP stage)
 - [ ] **A1.3.7** ReplayGain pipeline (track/album mode with true-peak safety)
 - [ ] **A1.3.8** Limiter + anti-clip guard after DSP chain
 - [ ] **A1.3.9** Convolver slot (FIR impulse response loader, optional)

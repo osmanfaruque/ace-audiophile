@@ -109,6 +109,9 @@ typedef struct AceDspState {
     uint8_t  resampler_enabled;
     uint32_t resampler_target_hz;
 
+    uint8_t  spatializer_enabled;
+    float    spatializer_strength; /**< 0.0 – 1.0 */
+
     float    preamp_db;           /**< −20 … +20 */
 } AceDspState;
 
@@ -139,6 +142,13 @@ void ace_set_resampler(uint8_t enabled, uint32_t target_hz);
  *  @param bits           Target bit depth (16, 20, 24, or 32).
  *  @param noise_shaping  Non-zero for 2nd-order F-weighted noise shaping. */
 void ace_set_dither(uint8_t enabled, int bits, uint8_t noise_shaping);
+
+/* ── Spatializer — virtual surround (A1.3.6) ──────────────────────────────── */
+
+/** Enable / disable the virtual-surround spatializer.
+ *  @param enabled   Non-zero to enable.
+ *  @param strength  Effect intensity 0.0 – 1.0. */
+void ace_set_spatializer(uint8_t enabled, float strength);
 
 /* ── Pre-amp + clip detection (A1.3.2) ─────────────────────────────────────── */
 
