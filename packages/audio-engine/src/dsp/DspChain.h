@@ -6,6 +6,7 @@
 #include "Crossfeed.h"
 #include "Spatializer.h"
 #include "Dither.h"
+#include "Limiter.h"
 #include "Resampler.h"
 #include <vector>
 
@@ -44,6 +45,7 @@ private:
     Spatializer m_spatializer;
     Resampler   m_resampler;
     Dither      m_dither;
+    Limiter     m_limiter;
     float       m_sample_rate{44100.0f};
     bool        m_configured{false};
 

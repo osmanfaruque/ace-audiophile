@@ -41,6 +41,12 @@ void DspChain::apply(const AceDspState& state)
     if (state.dither_enabled)
         m_dither.configure(state.dither_bits, state.dither_noise_shaping != 0);
 
+    // Limiter + anti-clip guard (A1.3.8)
+    m_limiter.configure(state.limiter_enabled != 0,
+                        state.limiter_ceiling_db,
+                        state.limiter_release_ms,
+                        m_sample_rate);
+
     m_configured = true;
 }
 
@@ -120,10 +126,8 @@ int DspChain::process(float* buf, int frames, int channels)
     if (m_state.dither_enabled)
         m_dither.process(out_ptr, out_frames, channels);
 
-    // 6. Clip guard: clamp to [-1.0, 1.0]
-    int total = out_frames * channels;
-    for (int i = 0; i < total; ++i)
-        out_ptr[i] = std::clamp(out_ptr[i], -1.0f, 1.0f);
+    // 6. Limiter + anti-clip guard (A1.3.8)
+    m_limiter.process(out_ptr, out_frames, channels);
 
     m_last_output = (out_ptr != buf) ? out_ptr : nullptr;
     return out_frames;

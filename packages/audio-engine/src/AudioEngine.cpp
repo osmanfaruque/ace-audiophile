@@ -380,6 +380,17 @@ void ace_set_replay_gain(uint8_t mode, float track_gain, float album_gain,
     g_dsp_chain.apply(g_dsp);
 }
 
+// ── Limiter + anti-clip guard (A1.3.8) ───────────────────────────────────────
+
+void ace_set_limiter(uint8_t enabled, float ceiling_db, float release_ms)
+{
+    std::lock_guard<std::mutex> lk(g_dsp_mtx);
+    g_dsp.limiter_enabled    = enabled;
+    g_dsp.limiter_ceiling_db = ceiling_db;
+    g_dsp.limiter_release_ms = release_ms;
+    g_dsp_chain.apply(g_dsp);
+}
+
 // ── Pre-amp + clip detection (A1.3.2) ────────────────────────────────────────
 
 void ace_set_preamp(float gain_db)

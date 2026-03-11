@@ -120,6 +120,10 @@ typedef struct AceDspState {
     float    rg_pre_amp;          /**< User pre-amp offset in dB */
     float    rg_ceiling_db;       /**< True-peak ceiling in dBTP (e.g. −1.0) */
 
+    uint8_t  limiter_enabled;
+    float    limiter_ceiling_db;   /**< Output ceiling in dBFS (e.g. −0.1) */
+    float    limiter_release_ms;   /**< Release time in ms (50–500, default 200) */
+
     float    preamp_db;           /**< −20 … +20 */
 } AceDspState;
 
@@ -171,6 +175,14 @@ void ace_set_spatializer(uint8_t enabled, float strength);
 void ace_set_replay_gain(uint8_t mode, float track_gain, float album_gain,
                          float track_peak, float album_peak,
                          float pre_amp, float ceiling_db);
+
+/* ── Limiter + anti-clip guard (A1.3.8) ────────────────────────────────────── */
+
+/** Enable / disable the brickwall look-ahead limiter.
+ *  @param enabled      Non-zero to enable (0 = hard-clamp only).
+ *  @param ceiling_db   Output ceiling in dBFS (e.g. −0.1). Clamped to ≤ 0.
+ *  @param release_ms   Release time in ms (50–500). */
+void ace_set_limiter(uint8_t enabled, float ceiling_db, float release_ms);
 
 /* ── Pre-amp + clip detection (A1.3.2) ─────────────────────────────────────── */
 
