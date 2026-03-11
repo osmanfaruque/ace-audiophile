@@ -86,6 +86,7 @@ function ViewRenderer({ view }: { view: AppView }) {
 
 export function AppShell() {
   const { uiMode, activeView, setActiveView, sidebarOpen, toggleSidebar } = useAppStore()
+  const technical = uiMode === 'technical'
 
   return (
     <div className="flex h-screen w-screen overflow-hidden" style={{ background: 'var(--ace-bg)' }}>
@@ -98,7 +99,7 @@ export function AppShell() {
 
       {/* ── Sidebar ───────────────────────────────────────── */}
       <motion.aside
-        animate={{ width: sidebarOpen ? 220 : 64 }}
+        animate={{ width: sidebarOpen ? (technical ? 180 : 220) : 64 }}
         transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
         className="relative shrink-0 flex flex-col pt-10 pb-4"
         style={{

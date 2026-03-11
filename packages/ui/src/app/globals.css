@@ -3,7 +3,7 @@
 /* ─────────────────────────────────────────────────────────────
    Audiophile Ace — Design Tokens
    All values flow through CSS variables so the dual UI mode
-   (beautiful / techie) can be switched at runtime.
+   (elegant / technical) can be switched at runtime.
 ───────────────────────────────────────────────────────────── */
 
 :root {
@@ -38,11 +38,21 @@
   /* ── Typography ─────────────────────────── */
   --ace-font-sans:  'Inter Variable', 'Inter', system-ui, sans-serif;
   --ace-font-mono:  'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --ace-font-body:  var(--ace-font-sans);
+  --ace-font-size-base: 14px;
 
   /* ── Animation ──────────────────────────── */
   --ace-transition-fast:   120ms cubic-bezier(0.4, 0, 0.2, 1);
   --ace-transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
   --ace-transition-slow:   400ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Layout (mode-aware defaults) ───────── */
+  --ace-sidebar-width: 220px;
+  --ace-sidebar-collapsed: 64px;
+  --ace-panel-gap: 12px;
+  --ace-card-radius: var(--ace-radius-lg);
+  --ace-card-padding: 16px;
+  --ace-blur-strength: 20px;
 
   /* ── VU Meter colors ────────────────────── */
   --vu-safe:   #4caf82;
@@ -50,13 +60,36 @@
   --vu-clip:   #e5534b;
 }
 
-/* Techie mode overrides — slightly more clinical, less warm */
-[data-ui-mode="techie"] {
-  --ace-accent:     #00d4ff;
-  --ace-accent-dim: #006680;
-  --ace-accent-glow: #00d4ff33;
-  --ace-bg:         #050508;
-  --ace-font-sans:  var(--ace-font-mono);
+/* ── Elegant mode (default) ────────────────────────────────
+   Oto / HiBy / UAPP-inspired — clean, art-forward, minimal chrome.
+   Warm accent, large radii, glassmorphism, generous spacing. */
+[data-ui-mode="elegant"] {
+  --ace-accent:        #7c6aff;
+  --ace-accent-dim:    #3d3580;
+  --ace-accent-glow:   #7c6aff33;
+  --ace-font-body:     var(--ace-font-sans);
+  --ace-font-size-base: 14px;
+  --ace-card-radius:   var(--ace-radius-xl);
+  --ace-card-padding:  20px;
+  --ace-panel-gap:     16px;
+  --ace-blur-strength: 24px;
+}
+
+/* ── Technical mode ────────────────────────────────────────
+   Symfonium-inspired — info-dense, waveform-forward, data-rich.
+   Cyan accent, monospace everywhere, tight spacing, sharp corners. */
+[data-ui-mode="technical"] {
+  --ace-accent:        #00d4ff;
+  --ace-accent-dim:    #006680;
+  --ace-accent-glow:   #00d4ff33;
+  --ace-bg:            #050508;
+  --ace-font-body:     var(--ace-font-mono);
+  --ace-font-size-base: 12px;
+  --ace-card-radius:   var(--ace-radius-sm);
+  --ace-card-padding:  8px;
+  --ace-panel-gap:     4px;
+  --ace-blur-strength: 8px;
+  --ace-sidebar-width: 180px;
 }
 
 /* AMOLED scheme — true black */
@@ -91,8 +124,8 @@ html, body {
   height: 100%;
   background: var(--ace-bg);
   color: var(--ace-text-primary);
-  font-family: var(--ace-font-sans);
-  font-size: 14px;
+  font-family: var(--ace-font-body);
+  font-size: var(--ace-font-size-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -136,9 +169,10 @@ html, body {
 /* Glassmorphism card */
 .glass {
   background: color-mix(in srgb, var(--ace-surface) 80%, transparent);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(var(--ace-blur-strength)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--ace-blur-strength)) saturate(1.4);
   border: 1px solid var(--ace-border);
+  border-radius: var(--ace-card-radius);
 }
 
 /* Glow effect for accent elements */

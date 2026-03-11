@@ -22,7 +22,7 @@
 - Bit-perfect playback with direct USB DAC access
 - 60-band parametric EQ with 1000+ presets
 - Full DSP chain: crossfeed, virtual surround (HRTF), dithering, noise shaping, compressor, ReplayGain
-- Dual UI: Beautiful mode (album-art-centric) + Techie mode (dense, data-rich)
+- Dual UI: Elegant mode (art-forward, minimal chrome) + Technical mode (info-dense, data-rich)
 - Per-channel spectrogram with lossy transcoding detection
 - Fake bit-depth detection (16-bit padded to 24-bit)
 - Binary file structure inspector (RIFF chunks, FLAC frames, hex/binary view)

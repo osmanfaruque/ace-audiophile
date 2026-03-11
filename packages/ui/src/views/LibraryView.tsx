@@ -238,7 +238,7 @@ function SidePanel({
 export function LibraryView({ mode }: { mode: string }) {
   const store      = usePlaybackStore()
   const { uiMode } = useAppStore()
-  const techie     = uiMode === 'techie'
+  const technical  = uiMode === 'technical'
 
   // Derive flat track list from queue (Phase 1 source)
   const tracks = useMemo(() =>
@@ -357,7 +357,7 @@ export function LibraryView({ mode }: { mode: string }) {
     <div className="flex h-full overflow-hidden" style={{ background: 'var(--ace-bg)' }}>
 
       {/* ══ Left panel (mode-aware) ══ */}
-      {!techie && (
+      {!technical && (
         <SidePanel
           mode={mode}
           tracks={tracks}
@@ -581,7 +581,7 @@ export function LibraryView({ mode }: { mode: string }) {
       </div>
 
       {/* ══ Right: Now Playing panel ══ */}
-      {!techie && store.currentTrack && (
+      {!technical && store.currentTrack && (
         <div className="w-56 shrink-0 border-l flex flex-col overflow-hidden"
           style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)' }}>
           <div className="px-3 py-2 text-xs uppercase tracking-widest border-b"

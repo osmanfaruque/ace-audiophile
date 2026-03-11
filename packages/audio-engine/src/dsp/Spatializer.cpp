@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
+#include <numbers>
 
 // ── Strength-to-parameter mapping ────────────────────────────────────────────
 //   strength 0.0 → bypass  |  0.5 → moderate  |  1.0 → full
@@ -47,7 +48,7 @@ void Spatializer::design_high_shelf()
 
     float A    = std::pow(10.0f, gain_db / 20.0f);
     float sqA  = std::sqrt(A);
-    float w0   = 2.0f * static_cast<float>(M_PI) * kShelfFreq / m_sample_rate;
+    float w0   = 2.0f * std::numbers::pi_v<float> * kShelfFreq / m_sample_rate;
     float tan2 = std::tan(w0 * 0.5f);
 
     // Pre-warped analog coefficients →  bilinear

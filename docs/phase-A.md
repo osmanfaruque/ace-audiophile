@@ -116,10 +116,10 @@
 
 ### A3.4 Dual UI Mode
 
-- [ ] **A3.4.1** Theming architecture — CSS variable layer + layout abstractions for two visual modes
-- [ ] **A3.4.2** "Elegant" mode (Oto / HiBy / UAPP-inspired — clean, art-forward, minimal chrome)
-- [ ] **A3.4.3** "Technical" mode (Symfonium-inspired — info-dense, waveform-forward, data-rich)
-- [ ] **A3.4.4** Mode switcher in SettingsView + persistent user preference
+- [x] **A3.4.1** Theming architecture — CSS variable layer + layout abstractions for two visual modes
+- [x] **A3.4.2** "Elegant" mode (Oto / HiBy / UAPP-inspired — clean, art-forward, minimal chrome)
+- [x] **A3.4.3** "Technical" mode (Symfonium-inspired — info-dense, waveform-forward, data-rich)
+- [x] **A3.4.4** Mode switcher in SettingsView + persistent user preference
 
 ---
 

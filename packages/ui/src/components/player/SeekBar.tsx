@@ -8,7 +8,7 @@ interface SeekBarProps {
   durationMs: number
   onSeek: (positionMs: number) => void
   className?: string
-  /** Thicker bar, techie mode */
+  /** Thicker bar, technical mode */
   thick?: boolean
 }
 

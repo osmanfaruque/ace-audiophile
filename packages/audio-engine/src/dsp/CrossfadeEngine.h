@@ -2,6 +2,7 @@
 #include <vector>
 #include <cstdint>
 #include <cmath>
+#include <numbers>
 
 /**
  * CrossfadeEngine — configurable track-to-track crossfade (A1.3.11).
@@ -66,8 +67,8 @@ public:
 private:
     /** Equal-power crossfade gain at position t (0.0 = start, 1.0 = end).
      *  out_gain = cos(t * π/2),  in_gain = sin(t * π/2) */
-    static float out_gain(float t) { return std::cos(t * static_cast<float>(M_PI) * 0.5f); }
-    static float in_gain(float t)  { return std::sin(t * static_cast<float>(M_PI) * 0.5f); }
+    static float out_gain(float t) { return std::cos(t * std::numbers::pi_v<float> * 0.5f); }
+    static float in_gain(float t)  { return std::sin(t * std::numbers::pi_v<float> * 0.5f); }
 
     Mode m_mode{Mode::Off};
     int  m_duration_frames{0};

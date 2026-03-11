@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────
 
 // ── UI ───────────────────────────────────────
-export type UiMode = 'beautiful' | 'techie'
+export type UiMode = 'elegant' | 'technical'
 export type ColorScheme = 'system' | 'light' | 'dark' | 'amoled'
 
 // ── Playback ──────────────────────────────────

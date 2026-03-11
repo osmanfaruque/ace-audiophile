@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <numbers>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -53,7 +54,7 @@ std::vector<int16_t> generate_sine_pcm(float freq_hz, float sample_rate,
     std::vector<int16_t> pcm(n);
     for (size_t i = 0; i < n; ++i) {
         double t = static_cast<double>(i) / sample_rate;
-        double val = std::sin(2.0 * M_PI * freq_hz * t) * 0.9;  // -0.9 dBFS headroom
+        double val = std::sin(2.0 * std::numbers::pi * freq_hz * t) * 0.9;  // -0.9 dBFS headroom
         pcm[i] = static_cast<int16_t>(std::round(val * 32767.0));
     }
     return pcm;

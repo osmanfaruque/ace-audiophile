@@ -89,7 +89,7 @@ Rules:
 
 All **UI views** implemented and type-check clean (commit `63b11a3`):
 
-- ✅ PlayerView (Beautiful + Techie modes, lyrics panel, star ratings)
+- ✅ PlayerView (Elegant + Technical modes, lyrics panel, star ratings)
 - ✅ EqualizerView (60-band interactive SVG PEQ)
 - ✅ LibraryView (3-panel browser, 4 browse modes)
 - ✅ PlaylistsView (CRUD, smart playlists, M3U, drag-reorder)

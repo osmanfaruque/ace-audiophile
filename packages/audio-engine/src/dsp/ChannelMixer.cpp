@@ -1,6 +1,7 @@
 #include "ChannelMixer.h"
 #include <cmath>
 #include <algorithm>
+#include <numbers>
 
 void ChannelMixer::configure(bool swap_lr, bool mono, float balance,
                               bool invert_l, bool invert_r)
@@ -12,7 +13,7 @@ void ChannelMixer::configure(bool swap_lr, bool mono, float balance,
     // Using constant-power panning law:
     //   L_gain = cos(θ),  R_gain = sin(θ),  θ = (balance+1)/2 * π/2
     balance = std::clamp(balance, -1.0f, 1.0f);
-    float theta = (balance + 1.0f) * 0.5f * static_cast<float>(M_PI) * 0.5f;
+    float theta = (balance + 1.0f) * 0.5f * std::numbers::pi_v<float> * 0.5f;
     m_gain_l = std::cos(theta);
     m_gain_r = std::sin(theta);
 

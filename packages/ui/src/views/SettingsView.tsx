@@ -145,26 +145,28 @@ function AppearanceTab() {
     <>
       <Section title="Interface Mode">
         <div className="grid grid-cols-2 gap-3">
-          {(['beautiful', 'techie'] as const).map((mode) => (
+          {([
+            { value: 'elegant' as const, label: 'Elegant', desc: 'Art-forward, clean, minimal chrome', hint: 'Oto / HiBy / UAPP-inspired' },
+            { value: 'technical' as const, label: 'Technical', desc: 'Info-dense, waveform-forward, data-rich', hint: 'Symfonium-inspired' },
+          ]).map(({ value, label, desc, hint }) => (
             <button
-              key={mode}
-              onClick={() => setUiMode(mode)}
+              key={value}
+              onClick={() => setUiMode(value)}
               className="relative flex flex-col items-start gap-1 p-4 rounded-xl border-2 text-left transition-colors"
               style={{
-                borderColor: uiMode === mode ? 'var(--ace-accent)' : 'var(--ace-border)',
-                background: uiMode === mode ? 'color-mix(in srgb, var(--ace-accent) 8%, var(--ace-bg-elevated))' : 'var(--ace-bg-elevated)',
+                borderColor: uiMode === value ? 'var(--ace-accent)' : 'var(--ace-border)',
+                background: uiMode === value ? 'color-mix(in srgb, var(--ace-accent) 8%, var(--ace-bg-elevated))' : 'var(--ace-bg-elevated)',
               }}
             >
-              {uiMode === mode && (
+              {uiMode === value && (
                 <span className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
                   style={{ background: 'var(--ace-accent)' }}>
                   <Check size={10} style={{ color: '#fff' }} />
                 </span>
               )}
-              <span className="font-semibold text-sm capitalize" style={{ color: 'var(--ace-text-primary)' }}>{mode}</span>
-              <span className="text-xs" style={{ color: 'var(--ace-text-muted)' }}>
-                {mode === 'beautiful' ? 'Album art focus, MusicBee-style' : 'Dense info, foobar2000-style'}
-              </span>
+              <span className="font-semibold text-sm" style={{ color: 'var(--ace-text-primary)' }}>{label}</span>
+              <span className="text-xs" style={{ color: 'var(--ace-text-secondary)' }}>{desc}</span>
+              <span className="text-[10px]" style={{ color: 'var(--ace-text-muted)' }}>{hint}</span>
             </button>
           ))}
         </div>

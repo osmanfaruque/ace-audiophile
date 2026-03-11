@@ -70,7 +70,7 @@ export type AppView =
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
-      uiMode: 'beautiful',
+      uiMode: 'elegant',
       colorScheme: 'dark',
       accentColor: null,
       activeView: 'player',

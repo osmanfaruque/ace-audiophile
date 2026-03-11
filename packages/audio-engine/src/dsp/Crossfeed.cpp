@@ -1,6 +1,7 @@
 #include "Crossfeed.h"
 #include <cmath>
 #include <algorithm>
+#include <numbers>
 
 void Crossfeed::configure(float strength, float sample_rate)
 {
@@ -25,7 +26,7 @@ void Crossfeed::design_lpf()
     //   b1 = b0
     //   a1 = (K − 1) / (K + 1)
     float fc   = std::min(kCutFreq, m_sample_rate * 0.45f);
-    float K    = std::tan(static_cast<float>(M_PI) * fc / m_sample_rate);
+    float K    = std::tan(std::numbers::pi_v<float> * fc / m_sample_rate);
     float norm = 1.0f / (K + 1.0f);
 
     m_b0 = K * norm;

@@ -67,7 +67,7 @@ function smoothPath(points: { x: number; y: number }[]): string {
 export function EqualizerView() {
   const dspStore   = useDspStore()
   const { uiMode } = useAppStore()
-  const techie     = uiMode === 'techie'
+  const technical  = uiMode === 'technical'
 
   const { state, updateBand, resetAllBands, setEqEnabled, setPreampDb, savePreset, loadPreset, deletePreset, allPresets, allProfiles, loadProfile, activeProfileId } = dspStore
   const { eqEnabled, bands, preampDb } = state
@@ -132,7 +132,7 @@ export function EqualizerView() {
     setShowSaveInput(false)
   }, [presetName, savePreset])
 
-  const accent    = techie ? 'var(--ace-accent)' : 'var(--ace-accent)'
+  const accent    = technical ? 'var(--ace-accent)' : 'var(--ace-accent)'
   const gridColor = 'rgba(255,255,255,0.06)'
   const zeroColor = 'rgba(255,255,255,0.18)'
 
@@ -173,7 +173,7 @@ export function EqualizerView() {
                 background: 'var(--ace-surface)',
                 color: 'var(--ace-text-primary)',
                 border: '1px solid var(--ace-border)',
-                fontFamily: techie ? 'var(--ace-font-mono)' : undefined,
+                fontFamily: technical ? 'var(--ace-font-mono)' : undefined,
               }}
               value={state.eqPresetId ?? ''}
               onChange={(e) => {

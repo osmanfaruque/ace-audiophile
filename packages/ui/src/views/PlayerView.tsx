@@ -193,14 +193,14 @@ function LyricsPanel({ positionMs, compact }: { positionMs: number; compact?: bo
 
 export function PlayerView() {
   const { uiMode } = useAppStore()
-  return uiMode === 'techie' ? <TechiePlayer /> : <BeautifulPlayer />
+  return uiMode === 'technical' ? <TechnicalPlayer /> : <ElegantPlayer />
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  BEAUTIFUL PLAYER  (MusicBee compact style)
+//  ELEGANT PLAYER  (Oto / HiBy / UAPP-inspired — art-forward, minimal chrome)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BeautifulPlayer() {
+function ElegantPlayer() {
   const store = usePlaybackStore()
   const { status, currentTrack, positionMs, durationMs, volume, repeat, shuffle } = store
 
@@ -426,10 +426,10 @@ function BeautifulPlayer() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TECHIE PLAYER  (foobar2000 style)
+//  TECHNICAL PLAYER  (Symfonium-inspired — info-dense, data-rich)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function TechiePlayer() {
+function TechnicalPlayer() {
   const store = usePlaybackStore()
   const { status, currentTrack, positionMs, durationMs, volume, repeat, shuffle, queue } = store
 
@@ -456,7 +456,7 @@ function TechiePlayer() {
     store.setRepeat(repeat === 'none' ? 'all' : repeat === 'all' ? 'one' : 'none')
   }, [repeat, store])
 
-  const [techieRating, setTechieRating] = useState(0)
+  const [technicalRating, setTechnicalRating] = useState(0)
 
   const t = currentTrack
   const monoFont: React.CSSProperties = { fontFamily: 'var(--ace-font-mono)', fontSize: 12 }
@@ -542,7 +542,7 @@ function TechiePlayer() {
                   {/* Rating row */}
                   <div className="flex items-center gap-2 px-3 py-1.5 border-b" style={{ borderColor: 'var(--ace-border)' }}>
                     <span className="text-xs w-28" style={{ color: 'var(--ace-text-muted)', fontFamily: 'var(--ace-font-mono)' }}>Rating</span>
-                    <RatingStars value={techieRating} onChange={setTechieRating} size={14} />
+                    <RatingStars value={technicalRating} onChange={setTechnicalRating} size={14} />
                   </div>
                 </>
               ) : (
