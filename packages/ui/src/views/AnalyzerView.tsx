@@ -7,8 +7,9 @@ import {
   AudioWaveform,
 } from 'lucide-react'
 import { usePlaybackStore } from '@/store/playbackStore'
+import { getAudioEngine } from '@/lib/audioEngine'
 import { cn, formatDuration, formatSampleRate } from '@/lib/utils'
-import type { AudioTrack } from '@ace/types'
+import type { AudioTrack, FileAnalysisResult as EngineAnalysisResult } from '@ace/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,35 +50,29 @@ async function openAudioFile(): Promise<string | null> {
   } catch { return null }
 }
 
-/** Simulate analysis result from track metadata (real C++ bridge replaces this) */
-function simulateAnalysis(track: AudioTrack): AnalysisResult {
+function mapVerdictLevel(verdict: string): VerdictLevel {
+  if (verdict === 'lossy' || verdict === 'lossy_transcode') return 'fail'
+  if (verdict === 'suspect') return 'warn'
+  if (verdict === 'lossless' || verdict === 'genuine') return 'pass'
+  return 'info'
+}
+
+function mapAnalysisToCards(track: AudioTrack, analysis: EngineAnalysisResult): AnalysisResult {
   const isSuspectHiRes = track.sampleRate > 44100 && track.bitDepth > 16
+  const hiResVerdict: VerdictLevel = analysis.isFakeBitDepth
+    ? 'warn'
+    : isSuspectHiRes
+    ? 'info'
+    : 'pass'
 
-  // Fake Hi-Res: if sampleRate > 48k but codec suggests it was a low-res source
-  const hiResVerdict: VerdictLevel =
-    track.sampleRate >= 88200
-      ? track.codec === 'flac' || track.codec === 'wav'
-        ? 'info'   // can't know without spectral analysis yet
-        : 'warn'
-      : 'pass'
-
-  const lossyVerdict: VerdictLevel =
-    track.isLossyTranscode === true ? 'fail'
-    : track.isLossyTranscode === false ? 'pass'
-    : 'info'
-
-  const dr = track.dynamicRange ?? Math.round(8 + Math.random() * 10)
+  const lossyVerdict: VerdictLevel = analysis.isLossyTranscode ? 'fail' : mapVerdictLevel(analysis.verdict)
+  const dr = Number.isFinite(analysis.drValue) ? analysis.drValue : 0
   const drVerdict: VerdictLevel = dr >= 14 ? 'pass' : dr >= 8 ? 'warn' : 'fail'
 
-  const lufs = track.lufs ?? -(14 + Math.random() * 6)
-  const truePeak = track.truePeak ?? (-0.5 + Math.random() * 0.8)
-  const loudnessVerdict: VerdictLevel = truePeak > 0 ? 'fail' : lufs < -8 ? 'pass' : 'warn'
-
-  const bitVerdict: VerdictLevel =
-    track.effectiveBitDepth != null && track.bitDepth != null
-      ? track.effectiveBitDepth < track.bitDepth ? 'warn' : 'pass'
-      : track.bitDepth === 24 ? 'info' : 'pass'
-
+  const lufs = Number.isFinite(analysis.lufsIntegrated) ? analysis.lufsIntegrated : -23
+  const truePeak = Number.isFinite(analysis.truePeakDb) ? analysis.truePeakDb : -1
+  const loudnessVerdict: VerdictLevel = truePeak > 0 ? 'fail' : lufs <= -16 ? 'pass' : 'warn'
+  const bitVerdict: VerdictLevel = analysis.isFakeBitDepth ? 'warn' : 'pass'
   const clipping: VerdictLevel = truePeak > 0.3 ? 'fail' : truePeak > 0 ? 'warn' : 'pass'
 
   return {
@@ -85,34 +80,38 @@ function simulateAnalysis(track: AudioTrack): AnalysisResult {
       id: 'hiRes',
       label: 'Hi-Res Legitimacy',
       verdict: hiResVerdict,
-      value: isSuspectHiRes ? `${formatSampleRate(track.sampleRate)} / ${track.bitDepth}-bit` : 'N/A',
-      detail: hiResVerdict === 'info'
-        ? 'Spectral analysis pending — run full scan to detect upsampling.'
-        : hiResVerdict === 'warn'
-        ? 'High sample rate from a container not typical for native hi-res.'
-        : 'Sample rate within standard range, no upsampling suspected.',
+      value: `${formatSampleRate(track.sampleRate)} / ${track.bitDepth}-bit`,
+      detail: hiResVerdict === 'warn'
+        ? `Container reports ${track.bitDepth}-bit but effective depth looks closer to ${analysis.effectiveBitDepth}-bit.`
+        : hiResVerdict === 'info'
+        ? 'Hi-res source detected; spectral ceiling checks are pending in next analysis stage.'
+        : 'No immediate sign of fake hi-res from current bit-depth integrity checks.',
     },
     lossyTranscode: {
       id: 'lossyTranscode',
       label: 'Lossy Transcode Detection',
       verdict: lossyVerdict,
-      value: lossyVerdict === 'fail' ? `Transcoded (${Math.round((track.lossyConfidence ?? 0.8) * 100)}% conf.)` : lossyVerdict === 'pass' ? 'Clean' : 'Unknown',
-      detail: lossyVerdict === 'fail'
-        ? `Spectral cutoff pattern matches lossy encoding. Confidence: ${Math.round((track.lossyConfidence ?? 0.8) * 100)}%.`
+      value: lossyVerdict === 'fail'
+        ? `Transcoded (${analysis.lossyConfidence}% conf.)`
         : lossyVerdict === 'pass'
-        ? 'No lossy compression artifacts detected in frequency spectrum.'
-        : 'Run full scan for spectral cutoff analysis.',
+        ? 'Clean'
+        : 'Unknown',
+      detail: lossyVerdict === 'fail'
+        ? `Engine verdict indicates lossy transcode. Confidence: ${analysis.lossyConfidence}%.`
+        : lossyVerdict === 'pass'
+        ? analysis.verdictExplanation || 'No lossy transcode signal detected in current pass.'
+        : analysis.verdictExplanation || 'Lossy verdict currently inconclusive.',
     },
     dynamicRange: {
       id: 'dynamicRange',
       label: 'Dynamic Range',
       verdict: drVerdict,
-      value: `DR${dr}`,
+      value: `DR${dr.toFixed(1)}`,
       detail: drVerdict === 'pass'
-        ? `DR${dr} — Excellent dynamic range, likely uncompressed or lightly mastered.`
+        ? `DR${dr.toFixed(1)} — Wide crest factor and strong dynamic contrast.`
         : drVerdict === 'warn'
-        ? `DR${dr} — Moderate loudness war compression. Acceptable for streaming.`
-        : `DR${dr} — Heavy brickwall limiting detected. Significant dynamic loss.`,
+        ? `DR${dr.toFixed(1)} — Moderate dynamic compression detected.`
+        : `DR${dr.toFixed(1)} — Heavy loudness compression likely.`,
     },
     loudness: {
       id: 'loudness',
@@ -122,18 +121,16 @@ function simulateAnalysis(track: AudioTrack): AnalysisResult {
       detail: loudnessVerdict === 'fail'
         ? `True peak exceeds 0 dBFS (${truePeak.toFixed(2)} dBTP). Intersample clipping likely.`
         : loudnessVerdict === 'warn'
-        ? `Louder than EBU R128 target (−23 LUFS). Streaming services will apply gain reduction.`
-        : `Integrated loudness within acceptable range. True peak safe.`,
+        ? `Louder than conservative broadcast targets; normalization will likely attenuate playback.`
+        : 'Integrated loudness and true peak are within safe range.',
     },
     bitDepth: {
       id: 'bitDepth',
       label: 'Bit Depth Integrity',
       verdict: bitVerdict,
-      value: track.bitDepth ? `${track.bitDepth}-bit${track.effectiveBitDepth && track.effectiveBitDepth < track.bitDepth ? ` (eff. ${track.effectiveBitDepth})` : ''}` : 'Unknown',
+      value: `${analysis.declaredBitDepth}-bit${analysis.isFakeBitDepth ? ` (eff. ${analysis.effectiveBitDepth})` : ''}`,
       detail: bitVerdict === 'warn'
-        ? `Container reports ${track.bitDepth}-bit but effective bit depth is ~${track.effectiveBitDepth}-bit. Likely upconverted.`
-        : bitVerdict === 'info'
-        ? 'Full bit depth analysis requires C++ engine scan.'
+        ? `Declared ${analysis.declaredBitDepth}-bit but effective depth appears near ${analysis.effectiveBitDepth}-bit.`
         : 'Bit depth appears genuine — no zero-padding artifacts detected.',
     },
     clipping: {
@@ -150,9 +147,9 @@ function simulateAnalysis(track: AudioTrack): AnalysisResult {
     dcOffset: {
       id: 'dcOffset',
       label: 'DC Offset',
-      verdict: 'pass',
-      value: '< 0.01%',
-      detail: 'No significant DC offset detected in either channel.',
+      verdict: 'info',
+      value: 'Pending A7.2.5',
+      detail: 'DC offset metric is planned in A7.2.5 and is not yet calculated by the backend.',
     },
   }
 }
@@ -579,11 +576,15 @@ export function AnalyzerView() {
     if (!track) return
     setStatus('analyzing')
     setResult(null)
-    // Simulate async C++ analysis (replace with invoke('analyze_track', { path: track.filePath }))
-    await new Promise(r => setTimeout(r, 1400))
-    setResult(simulateAnalysis(track))
-    setStatus('done')
-    setExpanded(new Set())
+    try {
+      const analysis = await getAudioEngine().analyzeFile(track.filePath)
+      setResult(mapAnalysisToCards(track, analysis))
+      setStatus('done')
+      setExpanded(new Set())
+    } catch (err) {
+      console.error('Analysis failed', err)
+      setStatus('error')
+    }
   }, [track])
 
   const toggleExpanded = (id: string) => {
@@ -684,6 +685,15 @@ export function AnalyzerView() {
               <Loader2 size={28} className="animate-spin" style={{ color: 'var(--ace-accent)' }} />
               <p className="text-xs" style={{ color: 'var(--ace-text-secondary)' }}>
                 Scanning audio content…
+              </p>
+            </div>
+          )}
+
+          {status === 'error' && (
+            <div className="flex flex-col items-center justify-center flex-1 gap-3 p-6 text-center">
+              <XCircle size={28} style={{ color: 'var(--ace-danger)' }} />
+              <p className="text-xs" style={{ color: 'var(--ace-text-secondary)' }}>
+                Analysis failed. Check engine logs and try again.
               </p>
             </div>
           )}

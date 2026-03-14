@@ -239,8 +239,8 @@
 
 ### A7.3 Integration
 
-- [ ] **A7.3.1** `ace_analyze_file` Tauri command → `AnalysisResult` JSON
-- [ ] **A7.3.2** AnalyzerView wired to real verdicts (replace mock data)
+- [x] **A7.3.1** `ace_analyze_file` Tauri command → `AnalysisResult` JSON
+- [x] **A7.3.2** AnalyzerView wired to real verdicts (replace mock data)
 - [ ] **A7.3.3** Real-time spectrogram via `fft-frame` events → canvas heat-map
 - [ ] **A7.3.4** ABX: sample-perfect A/B gapless switching
 - [ ] **A7.3.5** Export analysis report as JSON
