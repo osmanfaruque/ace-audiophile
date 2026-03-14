@@ -880,6 +880,23 @@ int ace_get_fft_frame(AceFftFrame* fft, AceLevelMeter* level)
     return (f.timestamp_ms > 0) ? 0 : -1;
 }
 
+int ace_set_stft_config(const AceStftConfig* config)
+{
+    if (!config) return -1;
+    return g_spectrogram.set_stft_config(*config);
+}
+
+int ace_set_spectrogram_channel_mode(uint8_t mode)
+{
+    return g_spectrogram.set_channel_mode(mode);
+}
+
+int ace_get_spectrogram_channel(uint8_t channel_index, float* out_bins,
+                                int max_frames, int* out_frames, int* out_bins_per_frame)
+{
+    return g_spectrogram.get_channel_ring(channel_index, out_bins, max_frames, out_frames, out_bins_per_frame);
+}
+
 void ace_set_position_callback(AcePositionCallback cb, void* ud)
 {
     g_pos_cb = cb;

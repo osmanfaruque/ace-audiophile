@@ -252,6 +252,25 @@ typedef struct AceFftFrame {
     uint64_t timestamp_ms;
 } AceFftFrame;
 
+typedef enum AceFftWindowType {
+    ACE_FFT_WINDOW_HANN = 0,
+    ACE_FFT_WINDOW_BLACKMAN = 1,
+    ACE_FFT_WINDOW_KAISER = 2,
+} AceFftWindowType;
+
+typedef enum AceSpectrogramChannelMode {
+    ACE_SPEC_MODE_STEREO = 0,
+    ACE_SPEC_MODE_MID_SIDE = 1,
+    ACE_SPEC_MODE_MERGED = 2,
+} AceSpectrogramChannelMode;
+
+typedef struct AceStftConfig {
+    uint32_t fft_size;         /**< 256..2048, power of two recommended */
+    float    overlap_percent;  /**< 0..95 */
+    uint8_t  window_type;      /**< AceFftWindowType */
+    uint8_t  multi_resolution; /**< 0=off, 1=enable dual-resolution blend */
+} AceStftConfig;
+
 typedef struct AceLevelMeter {
     float peak_l_db;
     float peak_r_db;
@@ -334,6 +353,20 @@ void ace_set_meter_callback(AceMeterCallback cb, void* userdata);
  *  Thread-safe.  Returns 0 on success, -1 if no data yet.
  *  This is the non-callback alternative for frontends that prefer polling. */
 int ace_get_fft_frame(AceFftFrame* fft, AceLevelMeter* level);
+
+/** Configure STFT parameters for the real-time FFT engine (A7.1.1). */
+int ace_set_stft_config(const AceStftConfig* config);
+
+/** Select spectrogram channel mode (A7.1.3). */
+int ace_set_spectrogram_channel_mode(uint8_t mode);
+
+/**
+ * Export spectrogram history ring-buffer for a channel (A7.1.2).
+ * channel_index: 0=left/mid/mono, 1=right/side/mono
+ * out_bins: frame-major array with capacity at least (max_frames * ACE_FFT_BINS)
+ */
+int ace_get_spectrogram_channel(uint8_t channel_index, float* out_bins,
+                                int max_frames, int* out_frames, int* out_bins_per_frame);
 
 /** Called when playback position changes (~100 ms resolution). */
 typedef void (*AcePositionCallback)(uint64_t position_ms, void* userdata);

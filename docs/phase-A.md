@@ -216,9 +216,9 @@
 
 ### A7.1 FFT Engine (KissFFT — MIT license)
 
-- [ ] **A7.1.1** Extended STFT config (overlap %, window type, multi-resolution) — builds on A1.4.4
-- [ ] **A7.1.2** Per-channel spectrogram ring buffer
-- [ ] **A7.1.3** Mid/Side and merged/unmerged channel spectrogram toggle
+- [x] **A7.1.1** Extended STFT config (overlap %, window type, multi-resolution) — builds on A1.4.4
+- [x] **A7.1.2** Per-channel spectrogram ring buffer
+- [x] **A7.1.3** Mid/Side and merged/unmerged channel spectrogram toggle
 
 ### A7.2 Analysis Functions (`ace_analyze_file`)
 
