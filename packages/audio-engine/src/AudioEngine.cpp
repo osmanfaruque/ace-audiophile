@@ -690,6 +690,78 @@ int ace_extract_metadata_json(const char* path, char* out_json, int out_cap)
     return 0;
 }
 
+int ace_write_metadata(const char* path, const AceTagWrite* tags)
+{
+    if (!path || !tags) return -1;
+
+    const std::string p(path);
+    const std::string ext = lowercase_ext(p);
+
+    TagLib::FileRef ref(path);
+    if (ref.isNull() || !ref.tag()) return -2;
+
+    auto* tag = ref.tag();
+    tag->setTitle(TagLib::String(tags->title, TagLib::String::UTF8));
+    tag->setArtist(TagLib::String(tags->artist, TagLib::String::UTF8));
+    tag->setAlbum(TagLib::String(tags->album, TagLib::String::UTF8));
+    tag->setGenre(TagLib::String(tags->genre, TagLib::String::UTF8));
+    tag->setComment(TagLib::String(tags->comment, TagLib::String::UTF8));
+    tag->setYear(tags->year);
+    tag->setTrack(tags->track_number);
+
+    bool ok = false;
+
+    if (ext == "flac") {
+        TagLib::FLAC::File flac(path);
+        auto* vc = flac.xiphComment(true);
+        if (vc) {
+            vc->addField("ALBUMARTIST", TagLib::String(tags->album_artist, TagLib::String::UTF8), true);
+            vc->addField("TRACKTOTAL", TagLib::String(std::to_string(tags->track_total), TagLib::String::UTF8), true);
+            vc->addField("DISCNUMBER", TagLib::String(std::to_string(tags->disc_number), TagLib::String::UTF8), true);
+            vc->addField("DISCTOTAL", TagLib::String(std::to_string(tags->disc_total), TagLib::String::UTF8), true);
+        }
+        ok = flac.save();
+    } else if (ext == "mp3") {
+        TagLib::MPEG::File mpeg(path);
+        auto* id3 = mpeg.ID3v2Tag(true);
+        if (id3) {
+            id3->setTitle(TagLib::String(tags->title, TagLib::String::UTF8));
+            id3->setArtist(TagLib::String(tags->artist, TagLib::String::UTF8));
+            id3->setAlbum(TagLib::String(tags->album, TagLib::String::UTF8));
+            id3->setGenre(TagLib::String(tags->genre, TagLib::String::UTF8));
+            id3->setComment(TagLib::String(tags->comment, TagLib::String::UTF8));
+            id3->setYear(tags->year);
+            id3->setTrack(tags->track_number);
+        }
+        ok = mpeg.save(
+            TagLib::MPEG::File::ID3v2,
+            TagLib::File::StripOthers,
+            TagLib::ID3v2::v4,
+            TagLib::File::Duplicate
+        );
+    } else if (ext == "m4a" || ext == "mp4" || ext == "aac") {
+        TagLib::MP4::File mp4(path);
+        auto* mp4_tag = mp4.tag();
+        if (mp4_tag) {
+            mp4_tag->setTitle(TagLib::String(tags->title, TagLib::String::UTF8));
+            mp4_tag->setArtist(TagLib::String(tags->artist, TagLib::String::UTF8));
+            mp4_tag->setAlbum(TagLib::String(tags->album, TagLib::String::UTF8));
+            mp4_tag->setGenre(TagLib::String(tags->genre, TagLib::String::UTF8));
+            mp4_tag->setComment(TagLib::String(tags->comment, TagLib::String::UTF8));
+            mp4_tag->setYear(tags->year);
+            mp4_tag->setTrack(tags->track_number);
+            mp4_tag->setItem("aART", TagLib::MP4::Item(TagLib::StringList(TagLib::String(tags->album_artist, TagLib::String::UTF8))));
+            mp4_tag->setItem("trkn", TagLib::MP4::Item(tags->track_number, tags->track_total));
+            mp4_tag->setItem("disk", TagLib::MP4::Item(tags->disc_number, tags->disc_total));
+        }
+        ok = mp4.save();
+    } else {
+        ok = ref.save();
+    }
+
+    return ok ? 0 : -3;
+}
+
 int ace_analyze_file(
     const char*      path,
     AceFileAnalysis* out,

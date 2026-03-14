@@ -294,6 +294,28 @@ int ace_analyze_file(
  */
 int ace_extract_metadata_json(const char* path, char* out_json, int out_cap);
 
+typedef struct AceTagWrite {
+    char title[256];
+    char artist[256];
+    char album_artist[256];
+    char album[256];
+    char genre[128];
+    char comment[512];
+    uint32_t year;
+    uint32_t track_number;
+    uint32_t track_total;
+    uint32_t disc_number;
+    uint32_t disc_total;
+} AceTagWrite;
+
+/**
+ * Write metadata tags back to the file (A4.3.1).
+ *
+ * FLAC writes Vorbis comments, MP3 writes ID3v2.4, and MP4/M4A writes iTunes
+ * atoms through TagLib.
+ */
+int ace_write_metadata(const char* path, const AceTagWrite* tags);
+
 /* ── Callbacks (set once before ace_play) ─────────────────────────────────── */
 
 /** Called from the audio thread every ~16 ms with FFT + level data. */

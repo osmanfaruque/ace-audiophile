@@ -45,6 +45,7 @@ pub fn run() {
             commands::ace_scan_folder,
             commands::ace_start_watcher,
             commands::ace_stop_watcher,
+            commands::ace_write_metadata,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Audiophile Ace");

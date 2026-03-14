@@ -89,6 +89,21 @@ interface RustScanComplete {
   folder: string
 }
 
+export interface MetadataWritePayload {
+  filePath: string
+  title: string
+  artist: string
+  albumArtist: string
+  album: string
+  genre: string
+  comment: string
+  year: number
+  trackNumber: number
+  trackTotal: number
+  discNumber: number
+  discTotal: number
+}
+
 // ─────────────────────────────────────────────────────────────
 //  Engine Interface
 // ─────────────────────────────────────────────────────────────
@@ -118,6 +133,9 @@ export interface IAudioEngine {
   // Analysis (A3.1.4)
   analyzeFile(filePath: string): Promise<FileAnalysisResult>
   generateSpectrogram(filePath: string, channelIndex: number): Promise<Float32Array>
+
+  // Metadata (A4.3.1)
+  writeMetadata(payload: MetadataWritePayload): Promise<void>
 
   // Scanning (A3.1.5)
   scanFolder(path: string, onProgress?: (file: string, count: number) => void): Promise<number>
@@ -209,6 +227,25 @@ class TauriAudioEngine implements IAudioEngine {
   async generateSpectrogram(filePath: string, channelIndex: number): Promise<Float32Array> {
     const raw = await invoke<number[]>('ace_generate_spectrogram', { filePath, channelIndex })
     return new Float32Array(raw)
+  }
+
+  async writeMetadata(payload: MetadataWritePayload) {
+    await invoke('ace_write_metadata', {
+      payload: {
+        file_path: payload.filePath,
+        title: payload.title,
+        artist: payload.artist,
+        album_artist: payload.albumArtist,
+        album: payload.album,
+        genre: payload.genre,
+        comment: payload.comment,
+        year: payload.year,
+        track_number: payload.trackNumber,
+        track_total: payload.trackTotal,
+        disc_number: payload.discNumber,
+        disc_total: payload.discTotal,
+      },
+    })
   }
 
   // ── A3.1.5 — Folder scanning ──────────────────────────

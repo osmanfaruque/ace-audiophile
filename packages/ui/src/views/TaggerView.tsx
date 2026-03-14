@@ -439,12 +439,42 @@ export function TaggerView() {
   // ── Save all ──
   const handleSave = useCallback(async () => {
     setSaveStatus('saving')
-    // Replace with invoke('write_tags', { files: ... })
-    await new Promise(r => setTimeout(r, 800))
+    try {
+      const { getAudioEngine } = await import('@/lib/audioEngine')
+      const engine = getAudioEngine()
+      const dirtyFiles = files.filter(f => f.dirty)
+
+      for (const f of dirtyFiles) {
+        const toInt = (v: string) => {
+          const n = Number.parseInt(v.trim(), 10)
+          return Number.isFinite(n) && n > 0 ? n : 0
+        }
+
+        await engine.writeMetadata({
+          filePath: f.track.filePath,
+          title: f.edited.title,
+          artist: f.edited.artist,
+          albumArtist: f.edited.albumArtist,
+          album: f.edited.album,
+          genre: f.edited.genre,
+          comment: f.edited.comment,
+          year: toInt(f.edited.year),
+          trackNumber: toInt(f.edited.trackNumber),
+          trackTotal: toInt(f.edited.totalTracks),
+          discNumber: toInt(f.edited.discNumber),
+          discTotal: toInt(f.edited.totalDiscs),
+        })
+      }
+    } catch (err) {
+      console.error('[TaggerView] Metadata save failed:', err)
+      setSaveStatus('idle')
+      return
+    }
+
     setFiles(prev => prev.map(f => ({ ...f, original: { ...f.edited }, dirty: false })))
     setSaveStatus('saved')
     setTimeout(() => setSaveStatus('idle'), 2000)
-  }, [])
+  }, [files])
 
   // ── Apply MusicBrainz result ──
   const applyMbResult = useCallback((result: MbResult) => {

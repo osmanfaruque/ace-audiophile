@@ -134,6 +134,34 @@ pub struct FileAnalysisResult {
     pub chunks: serde_json::Value,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct MetadataWritePayload {
+    #[serde(default)]
+    pub file_path: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub artist: String,
+    #[serde(default)]
+    pub album_artist: String,
+    #[serde(default)]
+    pub album: String,
+    #[serde(default)]
+    pub genre: String,
+    #[serde(default)]
+    pub comment: String,
+    #[serde(default)]
+    pub year: u32,
+    #[serde(default)]
+    pub track_number: u32,
+    #[serde(default)]
+    pub track_total: u32,
+    #[serde(default)]
+    pub disc_number: u32,
+    #[serde(default)]
+    pub disc_total: u32,
+}
+
 // ── Commands ─────────────────────────────────────────────────
 
 #[tauri::command]
@@ -240,4 +268,9 @@ pub async fn ace_start_watcher(app: AppHandle, paths: Vec<String>) -> Result<(),
 pub async fn ace_stop_watcher(_app: AppHandle) -> Result<(), AppError> {
     crate::watcher::stop();
     Ok(())
+}
+
+#[tauri::command]
+pub async fn ace_write_metadata(_app: AppHandle, payload: MetadataWritePayload) -> Result<(), AppError> {
+    crate::bridge::write_metadata(payload).map_err(|e| AppError::MetadataWriteFailed(e.to_string()))
 }

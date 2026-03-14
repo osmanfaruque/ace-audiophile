@@ -20,7 +20,7 @@ use libloading::{Library, Symbol};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::commands::{AudioDeviceInfo, DspStatePayload, FileAnalysisResult, TrackInfo};
+use crate::commands::{AudioDeviceInfo, DspStatePayload, FileAnalysisResult, MetadataWritePayload, TrackInfo};
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -207,6 +207,31 @@ struct CAceFileAnalysis {
     lufs_integrated: f32,
     is_lossy_transcoded: u8,
     effective_bit_depth: u8,
+}
+
+#[repr(C)]
+struct CAceTagWrite {
+    title: [u8; 256],
+    artist: [u8; 256],
+    album_artist: [u8; 256],
+    album: [u8; 256],
+    genre: [u8; 128],
+    comment: [u8; 512],
+    year: u32,
+    track_number: u32,
+    track_total: u32,
+    disc_number: u32,
+    disc_total: u32,
+}
+
+fn copy_str_to_buf(dst: &mut [u8], src: &str) {
+    if dst.is_empty() {
+        return;
+    }
+    let bytes = src.as_bytes();
+    let n = bytes.len().min(dst.len().saturating_sub(1));
+    dst[..n].copy_from_slice(&bytes[..n]);
+    dst[n] = 0;
 }
 
 // ── Playback ─────────────────────────────────────────────────
@@ -578,6 +603,41 @@ pub async fn analyze_file(app: &AppHandle, file_path: &str) -> Result<FileAnalys
 pub fn generate_spectrogram(_file_path: &str, _channel_index: u32) -> Result<Vec<f32>, BoxError> {
     // Will be wired when A7 analyzer is implemented
     Ok(vec![])
+}
+
+pub fn write_metadata(payload: MetadataWritePayload) -> Result<(), BoxError> {
+    let c_path = CString::new(payload.file_path.as_str())?;
+    let mut tags = CAceTagWrite {
+        title: [0; 256],
+        artist: [0; 256],
+        album_artist: [0; 256],
+        album: [0; 256],
+        genre: [0; 128],
+        comment: [0; 512],
+        year: payload.year,
+        track_number: payload.track_number,
+        track_total: payload.track_total,
+        disc_number: payload.disc_number,
+        disc_total: payload.disc_total,
+    };
+
+    copy_str_to_buf(&mut tags.title, &payload.title);
+    copy_str_to_buf(&mut tags.artist, &payload.artist);
+    copy_str_to_buf(&mut tags.album_artist, &payload.album_artist);
+    copy_str_to_buf(&mut tags.album, &payload.album);
+    copy_str_to_buf(&mut tags.genre, &payload.genre);
+    copy_str_to_buf(&mut tags.comment, &payload.comment);
+
+    let rc = unsafe {
+        let ace_write_metadata: Symbol<unsafe extern "C" fn(*const i8, *const CAceTagWrite) -> i32> =
+            sym(b"ace_write_metadata\0")?;
+        ace_write_metadata(c_path.as_ptr(), &tags)
+    };
+
+    if rc != 0 {
+        return Err(format!("ace_write_metadata failed for '{}' (code {rc})", payload.file_path).into());
+    }
+    Ok(())
 }
 
 // ── Folder scanning (A4.1.1) ─────────────────────────────────
