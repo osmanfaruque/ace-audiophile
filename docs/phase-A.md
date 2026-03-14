@@ -262,10 +262,10 @@
 
 ### A8.1 FR Data Import
 
-- [ ] **A8.1.1** AutoEQ CSV parser (frequency + SPL columns)
-- [ ] **A8.1.2** REW `.txt` measurement export parser
-- [ ] **A8.1.3** Validation + log-scale interpolation (1/24-octave grid)
-- [ ] **A8.1.4** squig.link profile import (IEM/TWS FR source adapter)
+- [x] **A8.1.1** AutoEQ CSV parser (frequency + SPL columns)
+- [x] **A8.1.2** REW `.txt` measurement export parser
+- [x] **A8.1.3** Validation + log-scale interpolation (1/24-octave grid)
+- [x] **A8.1.4** squig.link profile import (IEM/TWS FR source adapter)
 
 ### A8.2 Target Curve Library (built-in data)
 

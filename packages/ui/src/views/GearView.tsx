@@ -8,6 +8,12 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { GearProfile, TargetCurve } from '@ace/types'
+import {
+  parseAutoEqCsv,
+  parseRewTxt,
+  parseSquigLinkProfile,
+  toGearProfileFromFr,
+} from '@/lib/frImport'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -55,8 +61,8 @@ function generateSampleFR(type: GearProfile['type'], seed: number): number[] {
   })
 }
 
-function generateTargetFR(target: TargetCurve): number[] {
-  return FR_FREQUENCIES.map((f) => {
+function generateTargetFR(target: TargetCurve, frequencies: number[]): number[] {
+  return frequencies.map((f) => {
     const x = f / 20000
     switch (target) {
       case 'harman2019':
@@ -94,7 +100,7 @@ function FRChart({ gear, targetCurve, showCorrection }: {
   const plotW = W - PAD.left - PAD.right
   const plotH = H - PAD.top - PAD.bottom
 
-  const targetFR = useMemo(() => generateTargetFR(targetCurve), [targetCurve])
+  const targetFR = useMemo(() => generateTargetFR(targetCurve, gear.frFrequencies), [targetCurve, gear.frFrequencies])
 
   // Correction = target - measured
   const correction = useMemo(() =>
@@ -116,7 +122,7 @@ function FRChart({ gear, targetCurve, showCorrection }: {
   const yOfCorr = (db: number) => PAD.top + (1 - (db - corrMin) / (corrMax - corrMin)) * plotH
 
   const pathOfData = (yMapper: (v: number) => number, data: number[]) =>
-    data.map((v, i) => `${i === 0 ? 'M' : 'L'}${xOf(FR_FREQUENCIES[i]).toFixed(1)},${yMapper(v).toFixed(1)}`).join(' ')
+    data.map((v, i) => `${i === 0 ? 'M' : 'L'}${xOf(gear.frFrequencies[i]).toFixed(1)},${yMapper(v).toFixed(1)}`).join(' ')
 
   const measuredPath = pathOfData(yOfSpl, gear.frSpl)
   const targetPath = pathOfData(yOfSpl, targetFR)
@@ -240,11 +246,11 @@ function GearListItem({ gear, selected, onClick }: {
 // ── EQ Band Table ─────────────────────────────────────────────────────────────
 
 function EqCorrectionTable({ gear, targetCurve }: { gear: GearProfile; targetCurve: TargetCurve }) {
-  const targetFR = useMemo(() => generateTargetFR(targetCurve), [targetCurve])
+  const targetFR = useMemo(() => generateTargetFR(targetCurve, gear.frFrequencies), [targetCurve, gear.frFrequencies])
 
   // Pick ~10 bands for PEQ correction display
   const bands = useMemo(() => {
-    const correction = gear.frSpl.map((spl, i) => ({ freq: FR_FREQUENCIES[i], gain: Math.round((targetFR[i] - spl) * 10) / 10 }))
+    const correction = gear.frSpl.map((spl, i) => ({ freq: gear.frFrequencies[i], gain: Math.round((targetFR[i] - spl) * 10) / 10 }))
     // Filter to significant deviations and downsample
     const sig = correction.filter(b => Math.abs(b.gain) >= 1.5)
     // Pick up to 10 evenly spaced
@@ -296,6 +302,8 @@ export function GearView() {
   const [targetCurve, setTargetCurve] = useState<TargetCurve>('harman2019')
   const [showCorrection, setShowCorrection] = useState(false)
   const [showEqTable, setShowEqTable] = useState(true)
+  const [importIssues, setImportIssues] = useState<string[]>([])
+  const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const selected = gearList.find(g => g.id === selectedId) ?? gearList[0]
 
@@ -316,6 +324,33 @@ export function GearView() {
     setGearList(prev => prev.filter(g => g.id !== id))
     if (selectedId === id) setSelectedId(gearList[0]?.id ?? '')
   }, [selectedId, gearList])
+
+  const handleImportFr = useCallback(async (file: File) => {
+    const text = await file.text()
+    const lower = file.name.toLowerCase()
+
+    let parsed = parseAutoEqCsv(text)
+    let source: GearProfile['source'] = 'autoeq'
+    if (lower.endsWith('.txt')) {
+      parsed = parseRewTxt(text)
+      source = 'custom'
+    } else if (lower.includes('squig') || lower.endsWith('.json')) {
+      parsed = parseSquigLinkProfile(text)
+      source = 'crinacle'
+    }
+
+    if (parsed.points.length === 0) {
+      setImportIssues(['Import failed: no valid FR points found.'])
+      return
+    }
+
+    const base = file.name.replace(/\.[^.]+$/, '')
+    const id = `import-${Date.now()}`
+    const profile = toGearProfileFromFr(id, base, 'Imported', 'iem', source, parsed.points)
+    setGearList((prev) => [profile, ...prev])
+    setSelectedId(id)
+    setImportIssues(parsed.issues)
+  }, [])
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--ace-bg)', color: 'var(--ace-text-primary)' }}>
@@ -346,6 +381,32 @@ export function GearView() {
         </select>
 
         <div className="w-px h-5 mx-1" style={{ background: 'var(--ace-border)' }} />
+
+        <button
+          onClick={() => importInputRef.current?.click()}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border hover:bg-white/5 transition-colors"
+          style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-secondary)' }}
+          title="Import AutoEQ CSV, REW TXT, or squig profile"
+        >
+          <Upload size={12} /> Import FR
+        </button>
+
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".csv,.txt,.json"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.currentTarget.files?.[0]
+            if (f) {
+              handleImportFr(f).catch((err) => {
+                console.error('FR import failed', err)
+                setImportIssues(['Import failed unexpectedly.'])
+              })
+            }
+            e.currentTarget.value = ''
+          }}
+        />
 
         {/* FR / Correction toggle */}
         <div className="flex rounded overflow-hidden border" style={{ borderColor: 'var(--ace-border)' }}>
@@ -478,7 +539,16 @@ export function GearView() {
           {/* Chart */}
           <div className="flex-1 overflow-hidden p-3" style={{ background: '#050508' }}>
             {selected ? (
-              <FRChart gear={selected} targetCurve={targetCurve} showCorrection={showCorrection} />
+              <div className="h-full flex flex-col gap-2">
+                {importIssues.length > 0 && (
+                  <div className="text-[10px] px-2 py-1 border rounded" style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-warning)' }}>
+                    {importIssues.join(' | ')}
+                  </div>
+                )}
+                <div className="flex-1">
+                  <FRChart gear={selected} targetCurve={targetCurve} showCorrection={showCorrection} />
+                </div>
+              </div>
             ) : (
               <div className="flex items-center justify-center h-full text-xs" style={{ color: 'var(--ace-text-muted)' }}>
                 Select a gear profile from the left panel
