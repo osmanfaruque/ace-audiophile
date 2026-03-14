@@ -9,6 +9,7 @@ import { usePlaybackStore } from '@/store/playbackStore'
 import { useAppStore } from '@/store/appStore'
 import { formatDuration, formatSampleRate, cn } from '@/lib/utils'
 import type { AudioTrack, AudioCodec } from '@ace/types'
+import { getAudioEngine } from '@/lib/audioEngine'
 
 // ── Track factory ─────────────────────────────────────────────────────────────
 
@@ -241,13 +242,15 @@ export function LibraryView({ mode }: { mode: string }) {
   const { uiMode } = appStore
   const technical  = uiMode === 'technical'
 
-  // Derive flat track list from queue (Phase 1 source)
-  const tracks = useMemo(() =>
+  // Queue fallback if DB query fails
+  const queueTracks = useMemo(() =>
     store.queue.map((qi) => {
       const t = store.currentTrack?.id === qi.trackId ? store.currentTrack : null
       return t ?? makeTrackFromPath(qi.trackId, qi.position)
     }),
   [store.queue, store.currentTrack])
+
+  const [tracks, setTracks] = useState<AudioTrack[]>([])
 
   // ── Local state ──────────────────────────────────────────
   const [search,      setSearch]      = useState('')
@@ -257,10 +260,84 @@ export function LibraryView({ mode }: { mode: string }) {
   const [gridView,    setGridView]    = useState(false)
   const [activeFilter, setActiveFilter] = useState<string | null>(null)
 
-  // Per-track ratings stored locally (Phase 1; will move to DB in Phase 2)
+  // Per-track ratings in SQLite
   const [ratings, setRatings] = useState<Record<string, number>>({})
-  const setRating = useCallback((id: string, val: number) =>
-    setRatings((prev) => ({ ...prev, [id]: val })), [])
+  const setRating = useCallback((id: string, val: number) => {
+    setRatings((prev) => ({ ...prev, [id]: val }))
+    getAudioEngine().setRating(id, val).catch((e) => {
+      console.error('[LibraryView] Failed to persist rating:', e)
+    })
+  }, [])
+
+  const loadDbTracks = useCallback(async () => {
+    try {
+      const rows = await getAudioEngine().queryLibraryTracks({
+        search,
+        mode,
+        activeFilter,
+        sortKey,
+        sortDir,
+      })
+      const mapped: AudioTrack[] = rows.map((r) => ({
+        id: r.filePath,
+        filePath: r.filePath,
+        title: r.title,
+        artist: r.artist,
+        albumArtist: r.albumArtist,
+        album: r.album,
+        genre: r.genre,
+        year: r.year,
+        trackNumber: r.trackNumber,
+        totalTracks: r.totalTracks,
+        discNumber: r.discNumber,
+        totalDiscs: r.totalDiscs,
+        comment: r.comment,
+        durationMs: r.durationMs,
+        sampleRate: r.sampleRate,
+        bitDepth: r.bitDepth,
+        channels: r.channels,
+        codec: (r.codec as AudioCodec) ?? 'unknown',
+        bitrateKbps: r.bitrateKbps,
+        fileSizeBytes: r.fileSizeBytes,
+        effectiveBitDepth: null,
+        dynamicRange: null,
+        lufs: null,
+        truePeak: null,
+        isLossyTranscode: null,
+        lossyConfidence: null,
+        replayGainTrack: null,
+        replayGainAlbum: null,
+        musicBrainzId: null,
+        acoustId: null,
+        albumId: '',
+        dateAdded: Date.now(),
+        dateModified: Date.now(),
+        lastPlayed: null,
+        playCount: r.playCount,
+      }))
+      setTracks(mapped)
+    } catch (e) {
+      console.error('[LibraryView] Failed to query DB tracks, falling back to queue:', e)
+      setTracks(queueTracks)
+    }
+  }, [activeFilter, mode, queueTracks, search, sortDir, sortKey])
+
+  useEffect(() => {
+    loadDbTracks().catch(() => {})
+  }, [loadDbTracks])
+
+  useEffect(() => {
+    getAudioEngine()
+      .getRatings()
+      .then((rows) => {
+        const map: Record<string, number> = {}
+        rows.forEach((r) => {
+          map[r.trackId] = r.stars
+        })
+        setRatings(map)
+      })
+      .catch((e) => console.error('[LibraryView] Failed to load ratings:', e))
+  }, [])
 
   // ── Scan handler ─────────────────────────────────────────
   const handleScanLibrary = useCallback(async () => {
@@ -275,7 +352,9 @@ export function LibraryView({ mode }: { mode: string }) {
         if (folder) appStore.addLibraryPath(folder)
         else return
         paths.push(folder)
-      } catch { return }
+      } catch {
+        return
+      }
     }
 
     appStore.setIsScanning(true)
@@ -283,22 +362,21 @@ export function LibraryView({ mode }: { mode: string }) {
     appStore.setScanTotal(null)
 
     try {
-      const { getAudioEngine } = await import('@/lib/audioEngine')
       const engine = getAudioEngine()
       let totalAll = 0
       for (const p of paths) {
-        const count = await engine.scanFolder(p, (file, count) =>
-          appStore.setScanProgress({ file, count })
-        )
+        const count = await engine.scanAndIndexFolder(p)
+        appStore.setScanProgress({ file: p, count })
         totalAll += count
       }
       appStore.setScanTotal(totalAll)
+      await loadDbTracks()
     } catch (e) {
       console.error('[LibraryView] Scan failed:', e)
     } finally {
       appStore.setIsScanning(false)
     }
-  }, [appStore])
+  }, [appStore, loadDbTracks])
 
   // ── Start fs watcher on mount if library paths exist ─────
   useEffect(() => {
@@ -306,22 +384,21 @@ export function LibraryView({ mode }: { mode: string }) {
     let cleanup: (() => void) | undefined
     ;(async () => {
       try {
-        const { getAudioEngine } = await import('@/lib/audioEngine')
         const engine = getAudioEngine()
         await engine.startWatcher(appStore.libraryPaths)
         cleanup = await engine.onFsChange((evt) => {
           console.log('[Watcher]', evt.kind, evt.path)
-          // TODO: update library state incrementally in Phase 2
+          if (evt.kind === 'create' || evt.kind === 'modify') {
+            getAudioEngine().indexFilePaths([evt.path]).then(() => loadDbTracks()).catch(() => {})
+          }
         })
       } catch {}
     })()
     return () => {
       cleanup?.()
-      import('@/lib/audioEngine').then(({ getAudioEngine }) =>
-        getAudioEngine().stopWatcher().catch(() => {})
-      )
+      getAudioEngine().stopWatcher().catch(() => {})
     }
-  }, [appStore.libraryPaths])
+  }, [appStore.libraryPaths, loadDbTracks])
 
   // ── Filtering ────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -378,6 +455,8 @@ export function LibraryView({ mode }: { mode: string }) {
     if (!paths.length) return
     const newTracks = paths.map(makeTrackFromPath)
     store.addToQueue(newTracks)
+    await getAudioEngine().indexFilePaths(paths).catch(() => {})
+    await loadDbTracks()
     if (!store.currentTrack) {
       try {
         const { getAudioEngine } = await import('@/lib/audioEngine')
@@ -386,7 +465,7 @@ export function LibraryView({ mode }: { mode: string }) {
       } catch {}
       await store.play(newTracks[0].id)
     }
-  }, [store])
+  }, [loadDbTracks, store])
 
   const handlePlayTrack = useCallback(async (track: AudioTrack) => {
     try {

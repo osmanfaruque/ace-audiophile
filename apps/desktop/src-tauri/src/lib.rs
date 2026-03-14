@@ -60,6 +60,16 @@ pub fn run() {
             commands::ace_fetch_embed_cover_art,
             commands::ace_get_schema_versions,
             commands::ace_export_db_json,
+            commands::ace_scan_index_folder,
+            commands::ace_index_file_paths,
+            commands::ace_query_library_tracks,
+            commands::ace_save_playlists,
+            commands::ace_load_playlists,
+            commands::ace_set_rating,
+            commands::ace_get_ratings,
+            commands::ace_log_listening_event,
+            commands::ace_get_recap_stats,
+            commands::ace_get_album_art_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Audiophile Ace");

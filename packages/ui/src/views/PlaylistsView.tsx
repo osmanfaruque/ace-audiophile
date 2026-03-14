@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import {
   Plus, Trash2, Edit2, Check, X, Play, GripVertical,
   ListMusic, Zap, Upload, Download, Music2,
@@ -9,6 +9,7 @@ import { usePlaylistStore } from '@/store/playlistStore'
 import { usePlaybackStore } from '@/store/playbackStore'
 import { formatDuration, cn } from '@/lib/utils'
 import type { SmartPlaylistRule, AudioTrack, AudioCodec } from '@ace/types'
+import { getAudioEngine } from '@/lib/audioEngine'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -243,6 +244,56 @@ export function PlaylistsView() {
   const [renaming, setRenaming]       = useState<string | null>(null)
   const [showSmartRules, setShowSmartRules] = useState(false)
   const dragFrom = useRef<number>(-1)
+  const hydrated = useRef(false)
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const rows = await getAudioEngine().loadPlaylists()
+        if (!mounted) return
+        const entries = rows.map((row) => ({
+          playlist: {
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            createdAt: row.createdAt,
+            modifiedAt: row.modifiedAt,
+            trackCount: row.trackCount,
+            isSmartPlaylist: row.isSmartPlaylist,
+            rules: row.rulesJson ? (JSON.parse(row.rulesJson) as SmartPlaylistRule[]) : undefined,
+          },
+          trackIds: row.trackPaths,
+        }))
+        plStore.hydrate(entries, entries[0]?.playlist.id ?? null)
+        hydrated.current = true
+      } catch (e) {
+        console.error('[PlaylistsView] Failed to load playlists from DB:', e)
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [plStore])
+
+  useEffect(() => {
+    if (!hydrated.current) return
+    const entries = plStore.entries.map((entry) => ({
+      id: entry.playlist.id,
+      name: entry.playlist.name,
+      description: entry.playlist.description,
+      createdAt: entry.playlist.createdAt,
+      modifiedAt: entry.playlist.modifiedAt,
+      trackCount: entry.trackIds.length,
+      isSmartPlaylist: entry.playlist.isSmartPlaylist,
+      rulesJson: entry.playlist.rules ? JSON.stringify(entry.playlist.rules) : null,
+      trackPaths: entry.trackIds,
+    }))
+
+    getAudioEngine().savePlaylists(entries).catch((e) => {
+      console.error('[PlaylistsView] Failed to save playlists to DB:', e)
+    })
+  }, [plStore.entries])
 
   // ── Track resolution (Phase 1: reconstruct from queue) ──────────────────
   const queueTrackMap = new Map<string, AudioTrack>()
@@ -268,7 +319,8 @@ export function PlaylistsView() {
     const newTracks = paths.map(makeTrackFromPath)
     // Also add to queue so we can play them
     pbStore.addToQueue(newTracks)
-    plStore.addTracks(plStore.activeId, newTracks.map((t) => t.id))
+    await getAudioEngine().indexFilePaths(paths).catch(() => {})
+    plStore.addTracks(plStore.activeId, newTracks.map((t) => t.filePath))
   }, [plStore, pbStore])
 
   const handlePlayTrack = useCallback(async (track: AudioTrack) => {
@@ -291,7 +343,8 @@ export function PlaylistsView() {
     if (!paths.length) return
     const newTracks = paths.map(makeTrackFromPath)
     pbStore.addToQueue(newTracks)
-    plStore.addTracks(plStore.activeId, newTracks.map((t) => t.id))
+    await getAudioEngine().indexFilePaths(paths).catch(() => {})
+    plStore.addTracks(plStore.activeId, newTracks.map((t) => t.filePath))
   }, [plStore, pbStore])
 
   const totalDuration = activeTracks.reduce((sum, t) => sum + t.durationMs, 0)

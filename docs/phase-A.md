@@ -166,15 +166,15 @@
 
 ### A5.3 View Wiring
 
-- [ ] **A5.3.1** PlaylistsView CRUD → SQLite (replace Zustand-only)
-- [ ] **A5.3.2** RecapView → real `listening_events` data
-- [ ] **A5.3.3** PlayerView star ratings → persist to `ratings` table
-- [ ] **A5.3.4** LibraryView sort / filter → SQL queries
-- [ ] **A5.3.5** Yearly recap generator + PNG share card export
-- [ ] **A5.3.6** Session-level stats (skips, repeats, peak listening hour)
-- [ ] **A5.3.7** LibraryView wired to real scan data from DB (replace mock tracks)
-- [ ] **A5.3.8** Album art displayed from cache in PlayerView
-- [ ] **A5.3.9** Batch metadata editor UI (multi-select apply rules, TaggerView)
+- [x] **A5.3.1** PlaylistsView CRUD → SQLite (replace Zustand-only)
+- [x] **A5.3.2** RecapView → real `listening_events` data
+- [x] **A5.3.3** PlayerView star ratings → persist to `ratings` table
+- [x] **A5.3.4** LibraryView sort / filter → SQL queries
+- [x] **A5.3.5** Yearly recap generator + PNG share card export
+- [x] **A5.3.6** Session-level stats (skips, repeats, peak listening hour)
+- [x] **A5.3.7** LibraryView wired to real scan data from DB (replace mock tracks)
+- [x] **A5.3.8** Album art displayed from cache in PlayerView
+- [x] **A5.3.9** Batch metadata editor UI (multi-select apply rules, TaggerView)
 
 ---
 

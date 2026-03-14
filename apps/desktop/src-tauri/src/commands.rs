@@ -185,6 +185,60 @@ pub struct DbExportPayload {
     pub output_path: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DbPlaylistPayload {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub created_at: i64,
+    pub modified_at: i64,
+    pub track_count: i64,
+    pub is_smart_playlist: bool,
+    pub rules_json: Option<String>,
+    pub track_paths: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DbRatingPayload {
+    pub track_id: String,
+    pub stars: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct LibraryQueryPayload {
+    pub search: Option<String>,
+    pub mode: Option<String>,
+    pub active_filter: Option<String>,
+    pub sort_key: Option<String>,
+    pub sort_dir: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DbTrackPayload {
+    pub id: String,
+    pub file_path: String,
+    pub title: String,
+    pub artist: String,
+    pub album_artist: String,
+    pub album: String,
+    pub genre: String,
+    pub year: Option<i64>,
+    pub track_number: Option<i64>,
+    pub total_tracks: Option<i64>,
+    pub disc_number: Option<i64>,
+    pub total_discs: Option<i64>,
+    pub comment: String,
+    pub duration_ms: i64,
+    pub sample_rate: i64,
+    pub bit_depth: i64,
+    pub channels: i64,
+    pub codec: String,
+    pub bitrate_kbps: i64,
+    pub file_size_bytes: i64,
+    pub play_count: i64,
+    pub album_art_path: Option<String>,
+}
+
 // ── Commands ─────────────────────────────────────────────────
 
 #[tauri::command]
@@ -379,4 +433,139 @@ pub async fn ace_export_db_json(
         .map_err(|e| AppError::DatabaseFailed(e.to_string()))?;
 
     Ok(DbExportPayload { json, output_path })
+}
+
+#[tauri::command]
+pub async fn ace_scan_index_folder(app: AppHandle, path: String) -> Result<u32, AppError> {
+    crate::db::scan_and_index_folder(&app, &path)
+        .map_err(|e| AppError::DatabaseFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_index_file_paths(app: AppHandle, paths: Vec<String>) -> Result<u32, AppError> {
+    crate::db::index_file_paths(&app, &paths)
+        .map_err(|e| AppError::DatabaseFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_query_library_tracks(
+    app: AppHandle,
+    query: LibraryQueryPayload,
+) -> Result<Vec<DbTrackPayload>, AppError> {
+    let rows = crate::db::query_library_tracks(
+        &app,
+        crate::db::LibraryQuery {
+            search: query.search,
+            mode: query.mode,
+            active_filter: query.active_filter,
+            sort_key: query.sort_key,
+            sort_dir: query.sort_dir,
+        },
+    )
+    .map_err(|e| AppError::DatabaseFailed(e.to_string()))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| DbTrackPayload {
+            id: r.id,
+            file_path: r.file_path,
+            title: r.title,
+            artist: r.artist,
+            album_artist: r.album_artist,
+            album: r.album,
+            genre: r.genre,
+            year: r.year,
+            track_number: r.track_number,
+            total_tracks: r.total_tracks,
+            disc_number: r.disc_number,
+            total_discs: r.total_discs,
+            comment: r.comment,
+            duration_ms: r.duration_ms,
+            sample_rate: r.sample_rate,
+            bit_depth: r.bit_depth,
+            channels: r.channels,
+            codec: r.codec,
+            bitrate_kbps: r.bitrate_kbps,
+            file_size_bytes: r.file_size_bytes,
+            play_count: r.play_count,
+            album_art_path: r.album_art_path,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn ace_save_playlists(app: AppHandle, entries: Vec<DbPlaylistPayload>) -> Result<(), AppError> {
+    let rows: Vec<crate::db::PlaylistPayload> = entries
+        .into_iter()
+        .map(|p| crate::db::PlaylistPayload {
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            created_at: p.created_at,
+            modified_at: p.modified_at,
+            track_count: p.track_count,
+            is_smart_playlist: p.is_smart_playlist,
+            rules_json: p.rules_json,
+            track_paths: p.track_paths,
+        })
+        .collect();
+    crate::db::save_playlists(&app, &rows).map_err(|e| AppError::DatabaseFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_load_playlists(app: AppHandle) -> Result<Vec<DbPlaylistPayload>, AppError> {
+    let rows = crate::db::load_playlists(&app).map_err(|e| AppError::DatabaseFailed(e.to_string()))?;
+    Ok(rows
+        .into_iter()
+        .map(|p| DbPlaylistPayload {
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            created_at: p.created_at,
+            modified_at: p.modified_at,
+            track_count: p.track_count,
+            is_smart_playlist: p.is_smart_playlist,
+            rules_json: p.rules_json,
+            track_paths: p.track_paths,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn ace_set_rating(app: AppHandle, track_id: String, stars: i64) -> Result<(), AppError> {
+    crate::db::set_rating(&app, &track_id, stars).map_err(|e| AppError::DatabaseFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_get_ratings(app: AppHandle) -> Result<Vec<DbRatingPayload>, AppError> {
+    let rows = crate::db::get_ratings(&app).map_err(|e| AppError::DatabaseFailed(e.to_string()))?;
+    Ok(rows
+        .into_iter()
+        .map(|r| DbRatingPayload {
+            track_id: r.track_id,
+            stars: r.stars,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn ace_log_listening_event(
+    app: AppHandle,
+    track_id: String,
+    started_at: i64,
+    ended_at: Option<i64>,
+    completed: bool,
+) -> Result<(), AppError> {
+    crate::db::log_listening_event(&app, &track_id, started_at, ended_at, completed)
+        .map_err(|e| AppError::DatabaseFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_get_recap_stats(app: AppHandle, year: i32) -> Result<serde_json::Value, AppError> {
+    crate::db::get_recap_stats(&app, year).map_err(|e| AppError::DatabaseFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_get_album_art_path(app: AppHandle, track_id: String) -> Result<Option<String>, AppError> {
+    crate::db::get_album_art_path(&app, &track_id).map_err(|e| AppError::DatabaseFailed(e.to_string()))
 }

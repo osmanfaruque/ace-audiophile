@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { useAppStore } from '@/store/appStore'
 import { usePlaybackStore } from '@/store/playbackStore'
 import { useDspStore } from '@/store/dspStore'
@@ -14,6 +14,8 @@ import { getAudioEngine } from '@/lib/audioEngine'
  */
 export function AppProviders({ children }: { children: ReactNode }) {
   const { uiMode, colorScheme, init } = useAppStore()
+  const listenStartRef = useRef<number | null>(null)
+  const listenTrackRef = useRef<string | null>(null)
 
   // Apply design tokens to <html> element
   useEffect(() => {
@@ -60,6 +62,37 @@ export function AppProviders({ children }: { children: ReactNode }) {
     return () => {
       cleanups.forEach((off) => off())
     }
+  }, [])
+
+  // A5.3.2/A5.3.6 — persist listening session events for recap stats
+  useEffect(() => {
+    const unsub = usePlaybackStore.subscribe((s) => {
+      const currentPath = s.currentTrack?.filePath ?? s.currentTrack?.id ?? null
+
+      if (currentPath && currentPath !== listenTrackRef.current) {
+        const previousPath = listenTrackRef.current
+        const previousStart = listenStartRef.current
+        if (previousPath && previousStart) {
+          const endedAt = Date.now()
+          const completed = s.durationMs > 0 ? s.positionMs >= s.durationMs * 0.8 : false
+          getAudioEngine().logListeningEvent(previousPath, previousStart, endedAt, completed).catch(() => {})
+        }
+        listenTrackRef.current = currentPath
+        listenStartRef.current = Date.now()
+      }
+
+      if (!currentPath && listenTrackRef.current && listenStartRef.current) {
+        const endedAt = Date.now()
+        const completed = s.durationMs > 0 ? s.positionMs >= s.durationMs * 0.8 : false
+        getAudioEngine()
+          .logListeningEvent(listenTrackRef.current, listenStartRef.current, endedAt, completed)
+          .catch(() => {})
+        listenTrackRef.current = null
+        listenStartRef.current = null
+      }
+    })
+
+    return unsub
   }, [])
 
   // ── A3.3.4 — SMTC / MediaSession integration ──────────

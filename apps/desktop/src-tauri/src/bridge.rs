@@ -640,6 +640,29 @@ pub fn write_metadata(payload: MetadataWritePayload) -> Result<(), BoxError> {
     Ok(())
 }
 
+pub fn extract_metadata_json(file_path: &str) -> Result<serde_json::Value, BoxError> {
+    let c_path = CString::new(file_path)?;
+    let mut buf = [0i8; 8192];
+
+    let rc = unsafe {
+        let ace_extract_metadata_json: Symbol<unsafe extern "C" fn(*const i8, *mut i8, i32) -> i32> =
+            sym(b"ace_extract_metadata_json\0")?;
+        ace_extract_metadata_json(c_path.as_ptr(), buf.as_mut_ptr(), buf.len() as i32)
+    };
+
+    if rc != 0 {
+        return Err(format!("ace_extract_metadata_json failed for '{}' (code {rc})", file_path).into());
+    }
+
+    let text = unsafe { CStr::from_ptr(buf.as_ptr()) }
+        .to_str()
+        .map_err(|e| format!("Invalid UTF-8 metadata JSON for '{}': {e}", file_path))?;
+
+    let parsed = serde_json::from_str::<serde_json::Value>(text)
+        .map_err(|e| format!("Failed to parse metadata JSON for '{}': {e}", file_path))?;
+    Ok(parsed)
+}
+
 pub fn embed_cover_art(file_path: &str, image_path: &str) -> Result<(), BoxError> {
     let c_file = CString::new(file_path)?;
     let c_img = CString::new(image_path)?;
@@ -674,14 +697,13 @@ pub fn is_audio_file(path: &std::path::Path) -> bool {
         .unwrap_or(false)
 }
 
-pub fn scan_folder(app: &AppHandle, folder_path: &str) -> Result<u32, BoxError> {
+pub fn collect_audio_files(app: Option<&AppHandle>, folder_path: &str) -> Result<Vec<String>, BoxError> {
     let root = std::path::Path::new(folder_path);
     if !root.is_dir() {
         return Err(format!("Not a directory: {folder_path}").into());
     }
 
-    let mut count: u32 = 0;
-    let mut last_file = String::new();
+    let mut out = Vec::new();
 
     for entry in walkdir::WalkDir::new(root)
         .follow_links(true)
@@ -690,36 +712,40 @@ pub fn scan_folder(app: &AppHandle, folder_path: &str) -> Result<u32, BoxError> 
     {
         let p = entry.path();
         if p.is_file() && is_audio_file(p) {
-            count += 1;
-            last_file = p.to_string_lossy().into_owned();
-
-            // Emit progress in batches to keep IPC efficient
-            if count % SCAN_BATCH_SIZE == 0 {
-                app.emit(
-                    "ace://scan-progress",
-                    serde_json::json!({ "file": last_file, "count": count }),
-                )
-                .ok();
+            out.push(p.to_string_lossy().into_owned());
+            if let Some(app) = app {
+                let count = out.len() as u32;
+                if count % SCAN_BATCH_SIZE == 0 {
+                    app.emit(
+                        "ace://scan-progress",
+                        serde_json::json!({ "file": out.last().cloned().unwrap_or_default(), "count": count }),
+                    )
+                    .ok();
+                }
             }
         }
     }
 
-    // Final progress for remainder
-    if count % SCAN_BATCH_SIZE != 0 {
+    if let Some(app) = app {
+        if !out.is_empty() {
+            app.emit(
+                "ace://scan-progress",
+                serde_json::json!({ "file": out.last().cloned().unwrap_or_default(), "count": out.len() as u32 }),
+            )
+            .ok();
+        }
         app.emit(
-            "ace://scan-progress",
-            serde_json::json!({ "file": last_file, "count": count }),
+            "ace://scan-complete",
+            serde_json::json!({ "total": out.len() as u32, "folder": folder_path }),
         )
         .ok();
     }
 
-    app.emit(
-        "ace://scan-complete",
-        serde_json::json!({ "total": count, "folder": folder_path }),
-    )
-    .ok();
+    Ok(out)
+}
 
-    Ok(count)
+pub fn scan_folder(app: &AppHandle, folder_path: &str) -> Result<u32, BoxError> {
+    Ok(collect_audio_files(Some(app), folder_path)?.len() as u32)
 }
 
 // ── Helpers ──────────────────────────────────────────────────

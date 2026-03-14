@@ -11,6 +11,8 @@ interface PlaylistStore {
   entries: PlaylistEntry[]
   activeId: string | null
 
+  hydrate: (entries: PlaylistEntry[], activeId?: string | null) => void
+
   // CRUD
   createPlaylist: (name: string, smart?: boolean, rules?: SmartPlaylistRule[]) => string
   renamePlaylist: (id: string, name: string) => void
@@ -38,6 +40,8 @@ export const usePlaylistStore = create<PlaylistStore>()(
     (set, get) => ({
       entries: [],
       activeId: null,
+
+      hydrate: (entries, activeId = null) => set({ entries, activeId }),
 
       createPlaylist: (name, smart = false, rules = []) => {
         const id = uid()

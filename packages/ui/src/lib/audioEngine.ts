@@ -124,6 +124,51 @@ export interface DbExportResult {
   outputPath?: string | null
 }
 
+export interface DbPlaylistEntry {
+  id: string
+  name: string
+  description: string
+  createdAt: number
+  modifiedAt: number
+  trackCount: number
+  isSmartPlaylist: boolean
+  rulesJson?: string | null
+  trackPaths: string[]
+}
+
+export interface DbTrackRecord {
+  id: string
+  filePath: string
+  title: string
+  artist: string
+  albumArtist: string
+  album: string
+  genre: string
+  year: number | null
+  trackNumber: number | null
+  totalTracks: number | null
+  discNumber: number | null
+  totalDiscs: number | null
+  comment: string
+  durationMs: number
+  sampleRate: number
+  bitDepth: number
+  channels: number
+  codec: string
+  bitrateKbps: number
+  fileSizeBytes: number
+  playCount: number
+  albumArtPath?: string | null
+}
+
+export interface LibrarySqlQuery {
+  search?: string
+  mode?: string
+  activeFilter?: string | null
+  sortKey?: string
+  sortDir?: 'asc' | 'desc'
+}
+
 // ─────────────────────────────────────────────────────────────
 //  Engine Interface
 // ─────────────────────────────────────────────────────────────
@@ -165,6 +210,18 @@ export interface IAudioEngine {
   // DB infra (A5.2.1 / A5.2.2)
   getSchemaVersions(): Promise<SchemaVersion[]>
   exportDatabaseAsJson(outputPath?: string): Promise<DbExportResult>
+
+  // DB view wiring (A5.3)
+  scanAndIndexFolder(path: string): Promise<number>
+  indexFilePaths(paths: string[]): Promise<number>
+  queryLibraryTracks(query: LibrarySqlQuery): Promise<DbTrackRecord[]>
+  loadPlaylists(): Promise<DbPlaylistEntry[]>
+  savePlaylists(entries: DbPlaylistEntry[]): Promise<void>
+  setRating(trackId: string, stars: number): Promise<void>
+  getRatings(): Promise<Array<{ trackId: string; stars: number }>>
+  logListeningEvent(trackId: string, startedAt: number, endedAt: number | null, completed: boolean): Promise<void>
+  getRecapStats(year: number): Promise<unknown>
+  getAlbumArtPath(trackId: string): Promise<string | null>
 
   // Scanning (A3.1.5)
   scanFolder(path: string, onProgress?: (file: string, count: number) => void): Promise<number>
@@ -306,6 +363,141 @@ class TauriAudioEngine implements IAudioEngine {
       json: payload.json,
       outputPath: payload.output_path ?? null,
     }
+  }
+
+  async scanAndIndexFolder(path: string): Promise<number> {
+    return invoke<number>('ace_scan_index_folder', { path })
+  }
+
+  async indexFilePaths(paths: string[]): Promise<number> {
+    return invoke<number>('ace_index_file_paths', { paths })
+  }
+
+  async queryLibraryTracks(query: LibrarySqlQuery): Promise<DbTrackRecord[]> {
+    const rows = await invoke<Array<{
+      id: string
+      file_path: string
+      title: string
+      artist: string
+      album_artist: string
+      album: string
+      genre: string
+      year: number | null
+      track_number: number | null
+      total_tracks: number | null
+      disc_number: number | null
+      total_discs: number | null
+      comment: string
+      duration_ms: number
+      sample_rate: number
+      bit_depth: number
+      channels: number
+      codec: string
+      bitrate_kbps: number
+      file_size_bytes: number
+      play_count: number
+      album_art_path?: string | null
+    }>>('ace_query_library_tracks', {
+      query: {
+        search: query.search,
+        mode: query.mode,
+        active_filter: query.activeFilter ?? undefined,
+        sort_key: query.sortKey,
+        sort_dir: query.sortDir,
+      },
+    })
+
+    return rows.map((r) => ({
+      id: r.id,
+      filePath: r.file_path,
+      title: r.title,
+      artist: r.artist,
+      albumArtist: r.album_artist,
+      album: r.album,
+      genre: r.genre,
+      year: r.year,
+      trackNumber: r.track_number,
+      totalTracks: r.total_tracks,
+      discNumber: r.disc_number,
+      totalDiscs: r.total_discs,
+      comment: r.comment,
+      durationMs: r.duration_ms,
+      sampleRate: r.sample_rate,
+      bitDepth: r.bit_depth,
+      channels: r.channels,
+      codec: r.codec,
+      bitrateKbps: r.bitrate_kbps,
+      fileSizeBytes: r.file_size_bytes,
+      playCount: r.play_count,
+      albumArtPath: r.album_art_path ?? null,
+    }))
+  }
+
+  async loadPlaylists(): Promise<DbPlaylistEntry[]> {
+    const rows = await invoke<Array<{
+      id: string
+      name: string
+      description: string
+      created_at: number
+      modified_at: number
+      track_count: number
+      is_smart_playlist: boolean
+      rules_json?: string | null
+      track_paths: string[]
+    }>>('ace_load_playlists')
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      createdAt: r.created_at,
+      modifiedAt: r.modified_at,
+      trackCount: r.track_count,
+      isSmartPlaylist: r.is_smart_playlist,
+      rulesJson: r.rules_json ?? null,
+      trackPaths: r.track_paths,
+    }))
+  }
+
+  async savePlaylists(entries: DbPlaylistEntry[]): Promise<void> {
+    await invoke('ace_save_playlists', {
+      entries: entries.map((e) => ({
+        id: e.id,
+        name: e.name,
+        description: e.description,
+        created_at: e.createdAt,
+        modified_at: e.modifiedAt,
+        track_count: e.trackCount,
+        is_smart_playlist: e.isSmartPlaylist,
+        rules_json: e.rulesJson ?? null,
+        track_paths: e.trackPaths,
+      })),
+    })
+  }
+
+  async setRating(trackId: string, stars: number): Promise<void> {
+    await invoke('ace_set_rating', { trackId, stars })
+  }
+
+  async getRatings(): Promise<Array<{ trackId: string; stars: number }>> {
+    const rows = await invoke<Array<{ track_id: string; stars: number }>>('ace_get_ratings')
+    return rows.map((r) => ({ trackId: r.track_id, stars: r.stars }))
+  }
+
+  async logListeningEvent(trackId: string, startedAt: number, endedAt: number | null, completed: boolean): Promise<void> {
+    await invoke('ace_log_listening_event', {
+      trackId,
+      startedAt,
+      endedAt,
+      completed,
+    })
+  }
+
+  async getRecapStats(year: number): Promise<unknown> {
+    return invoke<unknown>('ace_get_recap_stats', { year })
+  }
+
+  async getAlbumArtPath(trackId: string): Promise<string | null> {
+    return invoke<string | null>('ace_get_album_art_path', { trackId })
   }
 
   // ── A3.1.5 — Folder scanning ──────────────────────────

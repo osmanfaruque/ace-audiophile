@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import {
   SkipBack, Play, Pause, SkipForward, Square,
   Repeat, Repeat1, Shuffle, FolderOpen, ListMusic,
@@ -229,7 +229,38 @@ function ElegantPlayer() {
 
   const noTrack = !currentTrack
   const [rating, setRating] = useState(0)
+  const [albumArtPath, setAlbumArtPath] = useState<string | null>(null)
   const [showLyrics, setShowLyrics] = useState(false)
+
+  useEffect(() => {
+    if (!currentTrack) {
+      setRating(0)
+      setAlbumArtPath(null)
+      return
+    }
+    getAudioEngine()
+      .getRatings()
+      .then((rows) => {
+        const hit = rows.find((r) => r.trackId === currentTrack.filePath || r.trackId === currentTrack.id)
+        setRating(hit?.stars ?? 0)
+      })
+      .catch(() => setRating(0))
+    getAudioEngine()
+      .getAlbumArtPath(currentTrack.filePath)
+      .then((p) => setAlbumArtPath(p ?? null))
+      .catch(() => setAlbumArtPath(null))
+  }, [currentTrack])
+
+  const updateRating = useCallback(
+    (v: number) => {
+      setRating(v)
+      if (!currentTrack) return
+      getAudioEngine().setRating(currentTrack.filePath, v).catch((e) => {
+        console.error('[PlayerView] Failed to persist rating:', e)
+      })
+    },
+    [currentTrack],
+  )
 
   return (
     <div className="relative w-full h-full overflow-hidden select-none">
@@ -347,7 +378,11 @@ function ElegantPlayer() {
                 border: '1px solid var(--ace-border)',
               }}
             >
-              <span style={{ fontSize: 22, color: 'var(--ace-accent)' }}>♪</span>
+              {albumArtPath ? (
+                <img src={albumArtPath} alt="Album art" className="w-full h-full object-cover rounded-lg" />
+              ) : (
+                <span style={{ fontSize: 22, color: 'var(--ace-accent)' }}>♪</span>
+              )}
             </div>
 
             {/* Track info + rating */}
@@ -362,7 +397,7 @@ function ElegantPlayer() {
                 <p className="text-xs truncate opacity-55" style={{ color: 'var(--ace-text-secondary)' }}>
                   {currentTrack.album}
                 </p>
-                <RatingStars value={rating} onChange={setRating} size={12} />
+                <RatingStars value={rating} onChange={updateRating} size={12} />
               </div>
             </div>
 
@@ -457,8 +492,32 @@ function TechnicalPlayer() {
   }, [repeat, store])
 
   const [technicalRating, setTechnicalRating] = useState(0)
-
   const t = currentTrack
+
+  useEffect(() => {
+    if (!t) {
+      setTechnicalRating(0)
+      return
+    }
+    getAudioEngine()
+      .getRatings()
+      .then((rows) => {
+        const hit = rows.find((r) => r.trackId === t.filePath || r.trackId === t.id)
+        setTechnicalRating(hit?.stars ?? 0)
+      })
+      .catch(() => setTechnicalRating(0))
+  }, [t])
+
+  const updateTechnicalRating = useCallback(
+    (v: number) => {
+      setTechnicalRating(v)
+      if (!t) return
+      getAudioEngine().setRating(t.filePath, v).catch((e) => {
+        console.error('[PlayerView] Failed to persist technical rating:', e)
+      })
+    },
+    [t],
+  )
   const monoFont: React.CSSProperties = { fontFamily: 'var(--ace-font-mono)', fontSize: 12 }
 
   const metaRows: [string, string][] = t ? [
@@ -542,7 +601,7 @@ function TechnicalPlayer() {
                   {/* Rating row */}
                   <div className="flex items-center gap-2 px-3 py-1.5 border-b" style={{ borderColor: 'var(--ace-border)' }}>
                     <span className="text-xs w-28" style={{ color: 'var(--ace-text-muted)', fontFamily: 'var(--ace-font-mono)' }}>Rating</span>
-                    <RatingStars value={technicalRating} onChange={setTechnicalRating} size={14} />
+                    <RatingStars value={technicalRating} onChange={updateTechnicalRating} size={14} />
                   </div>
                 </>
               ) : (
