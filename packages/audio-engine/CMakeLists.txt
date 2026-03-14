@@ -80,6 +80,19 @@ add_subdirectory(${soxr_SOURCE_DIR} ${soxr_BINARY_DIR} EXCLUDE_FROM_ALL)
 unset(CMAKE_POLICY_VERSION_MINIMUM CACHE)
 message(STATUS "[ace] libsoxr source dir: ${soxr_SOURCE_DIR}")
 
+# ── TagLib (A4.2 metadata extraction) ───────────────────────────────────────
+find_package(TagLib QUIET)
+if(NOT TagLib_FOUND)
+    message(STATUS "[ace] System TagLib not found – fetching TagLib from source")
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(taglib
+        GIT_REPOSITORY https://github.com/taglib/taglib.git
+        GIT_TAG        v2.0.2
+    )
+    FetchContent_MakeAvailable(taglib)
+endif()
+
 # ── Source files ──────────────────────────────────────────────────────────────
 set(ACE_SOURCES
     src/AudioEngine.cpp
@@ -107,6 +120,21 @@ set(ACE_SOURCES
 add_library(ace_engine SHARED ${ACE_SOURCES})
 target_include_directories(ace_engine PUBLIC include)
 target_include_directories(ace_engine PRIVATE src)
+if(DEFINED taglib_SOURCE_DIR)
+    target_include_directories(ace_engine PRIVATE
+        "${taglib_SOURCE_DIR}/taglib"
+        "${taglib_SOURCE_DIR}/taglib/toolkit"
+        "${taglib_SOURCE_DIR}/taglib/flac"
+        "${taglib_SOURCE_DIR}/taglib/mpeg"
+        "${taglib_SOURCE_DIR}/taglib/mpeg/id3v2"
+        "${taglib_SOURCE_DIR}/taglib/mpeg/id3v2/frames"
+        "${taglib_SOURCE_DIR}/taglib/mp4"
+        "${taglib_SOURCE_DIR}/taglib/ogg"
+    )
+endif()
+if(TagLib_FOUND AND TagLib_INCLUDE_DIRS)
+    target_include_directories(ace_engine PRIVATE ${TagLib_INCLUDE_DIRS})
+endif()
 
 # KissFFT — compile kiss_fft.c directly (header-only style with one .c file)
 target_sources(ace_engine PRIVATE "${kissfft_SOURCE_DIR}/kiss_fft.c")
@@ -123,6 +151,18 @@ target_link_libraries(ace_engine PRIVATE
     FFmpeg::swresample
     soxr
 )
+
+if(TARGET TagLib::TagLib)
+    target_link_libraries(ace_engine PRIVATE TagLib::TagLib)
+elseif(TARGET tag)
+    target_link_libraries(ace_engine PRIVATE tag)
+elseif(TARGET taglib)
+    target_link_libraries(ace_engine PRIVATE taglib)
+endif()
+
+# TagLib is linked statically in our build graph; avoid __declspec(dllimport)
+# symbols that would otherwise require a separate import library on Windows.
+target_compile_definitions(ace_engine PRIVATE TAGLIB_STATIC TAGLIB_STATIC_DEFINE)
 
 # ── Platform-specific output backends ─────────────────────────────────────────
 if(WIN32)

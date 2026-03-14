@@ -133,10 +133,10 @@
 
 ### A4.2 Metadata Extraction (TagLib via C++ engine)
 
-- [ ] **A4.2.1** FLAC: Vorbis comments
-- [ ] **A4.2.2** MP3: ID3v2.4
-- [ ] **A4.2.3** AAC / M4A: iTunes atoms
-- [ ] **A4.2.4** Embedded album art → `%APPDATA%/ace/art/` PNG cache
+- [x] **A4.2.1** FLAC: Vorbis comments
+- [x] **A4.2.2** MP3: ID3v2.4
+- [x] **A4.2.3** AAC / M4A: iTunes atoms
+- [x] **A4.2.4** Embedded album art → `%APPDATA%/ace/art/` PNG cache
 
 ### A4.3 Metadata Editing + AutoTag
 

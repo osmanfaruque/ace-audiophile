@@ -6,13 +6,32 @@
 #include "output/AudioOutput.h"
 #include "analysis/Spectrogram.h"
 
+#include <fileref.h>
+#include <tag.h>
+#include <flacfile.h>
+#include <xiphcomment.h>
+#include <mpegfile.h>
+#include <id3v2tag.h>
+#include <id3v2header.h>
+#include <attachedpictureframe.h>
+#include <mp4file.h>
+#include <mp4tag.h>
+#include <mp4item.h>
+#include <mp4coverart.h>
+
 #ifdef _WIN32
 #include "output/WASAPIOutput.h"
 #endif
 
 #include <atomic>
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -463,6 +482,213 @@ void ace_reset_preamp_clip(void)
 }
 
 // ── Analysis ─────────────────────────────────────────────────────────────────
+
+static std::string json_escape(const std::string& s)
+{
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) out += '?';
+                else out += c;
+                break;
+        }
+    }
+    return out;
+}
+
+static std::string tl_to_utf8(const TagLib::String& s)
+{
+    return s.to8Bit(true);
+}
+
+static std::string lowercase_ext(const std::string& path)
+{
+    std::filesystem::path p(path);
+    std::string ext = p.has_extension() ? p.extension().string() : std::string();
+    if (!ext.empty() && ext[0] == '.') ext.erase(ext.begin());
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return ext;
+}
+
+static std::filesystem::path art_cache_dir()
+{
+#ifdef _WIN32
+    const char* appdata = std::getenv("APPDATA");
+    if (appdata && *appdata) {
+        return std::filesystem::path(appdata) / "ace" / "art";
+    }
+    return std::filesystem::temp_directory_path() / "ace" / "art";
+#else
+    const char* xdg = std::getenv("XDG_DATA_HOME");
+    if (xdg && *xdg) {
+        return std::filesystem::path(xdg) / "ace" / "art";
+    }
+    const char* home = std::getenv("HOME");
+    if (home && *home) {
+        return std::filesystem::path(home) / ".local" / "share" / "ace" / "art";
+    }
+    return std::filesystem::temp_directory_path() / "ace" / "art";
+#endif
+}
+
+static std::string write_art_cache_png(const std::string& source_path, const TagLib::ByteVector& bytes)
+{
+    if (bytes.isEmpty()) return std::string();
+
+    std::error_code ec;
+    auto dir = art_cache_dir();
+    std::filesystem::create_directories(dir, ec);
+    if (ec) return std::string();
+
+    const auto hash = std::hash<std::string>{}(source_path);
+    auto out_path = dir / (std::to_string(hash) + ".png");
+
+    std::ofstream f(out_path, std::ios::binary | std::ios::trunc);
+    if (!f) return std::string();
+    f.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    if (!f.good()) return std::string();
+    return out_path.string();
+}
+
+int ace_extract_metadata_json(const char* path, char* out_json, int out_cap)
+{
+    if (!path || !out_json || out_cap <= 2) return -1;
+
+    std::string p(path);
+    std::string ext = lowercase_ext(p);
+
+    std::string title;
+    std::string artist;
+    std::string album;
+    std::string genre;
+    std::string comment;
+    int year = 0;
+    int track = 0;
+    int disc = 0;
+    bool flac_vorbis = false;
+    bool mp3_id3v24 = false;
+    bool mp4_atoms = false;
+    std::string art_png_path;
+
+    // Baseline tags from generic TagLib facade.
+    {
+        TagLib::FileRef ref(path);
+        if (!ref.isNull() && ref.tag()) {
+            auto* tag = ref.tag();
+            title = tl_to_utf8(tag->title());
+            artist = tl_to_utf8(tag->artist());
+            album = tl_to_utf8(tag->album());
+            genre = tl_to_utf8(tag->genre());
+            comment = tl_to_utf8(tag->comment());
+            year = static_cast<int>(tag->year());
+            track = static_cast<int>(tag->track());
+        }
+    }
+
+    if (ext == "flac") {
+        TagLib::FLAC::File flac(path);
+        if (flac.isValid()) {
+            auto* vc = flac.xiphComment();
+            flac_vorbis = (vc != nullptr);
+            if (vc) {
+                const auto map = vc->fieldListMap();
+                auto first = [&map](const char* k) -> std::string {
+                    auto it = map.find(k);
+                    if (it == map.end() || it->second.isEmpty()) return std::string();
+                    return it->second.front().to8Bit(true);
+                };
+                if (title.empty()) title = first("TITLE");
+                if (artist.empty()) artist = first("ARTIST");
+                if (album.empty()) album = first("ALBUM");
+                if (genre.empty()) genre = first("GENRE");
+                if (comment.empty()) comment = first("COMMENT");
+                if (year == 0) year = std::atoi(first("DATE").c_str());
+                if (track == 0) track = std::atoi(first("TRACKNUMBER").c_str());
+                if (disc == 0) disc = std::atoi(first("DISCNUMBER").c_str());
+            }
+
+            const auto pics = flac.pictureList();
+            if (!pics.isEmpty()) {
+                art_png_path = write_art_cache_png(p, pics.front()->data());
+            }
+        }
+    } else if (ext == "mp3") {
+        TagLib::MPEG::File mpeg(path);
+        auto* id3 = mpeg.ID3v2Tag(false);
+        if (id3) {
+            auto* hdr = id3->header();
+            if (hdr) mp3_id3v24 = (hdr->majorVersion() == 4);
+
+            const auto apic = id3->frameListMap()["APIC"];
+            if (!apic.isEmpty()) {
+                auto* pic = dynamic_cast<TagLib::ID3v2::AttachedPictureFrame*>(apic.front());
+                if (pic) {
+                    art_png_path = write_art_cache_png(p, pic->picture());
+                }
+            }
+        }
+    } else if (ext == "m4a" || ext == "aac" || ext == "mp4") {
+        TagLib::MP4::File mp4(path);
+        auto* tag = mp4.tag();
+        if (tag) {
+            const auto items = tag->itemMap();
+            mp4_atoms = !items.isEmpty();
+
+            auto get_text = [&items](const char* key) -> std::string {
+                auto it = items.find(key);
+                if (it == items.end()) return std::string();
+                if (!it->second.isValid()) return std::string();
+                if (!it->second.toStringList().isEmpty()) return it->second.toStringList().front().to8Bit(true);
+                return std::string();
+            };
+
+            if (title.empty()) title = get_text("\251nam");
+            if (artist.empty()) artist = get_text("\251ART");
+            if (album.empty()) album = get_text("\251alb");
+            if (genre.empty()) genre = get_text("\251gen");
+
+            auto covr_it = items.find("covr");
+            if (covr_it != items.end() && covr_it->second.isValid()) {
+                auto covr = covr_it->second.toCoverArtList();
+                if (!covr.isEmpty()) {
+                    art_png_path = write_art_cache_png(p, covr.front().data());
+                }
+            }
+        }
+    }
+
+    std::ostringstream json;
+    json << "{";
+    json << "\"title\":\"" << json_escape(title) << "\",";
+    json << "\"artist\":\"" << json_escape(artist) << "\",";
+    json << "\"album\":\"" << json_escape(album) << "\",";
+    json << "\"genre\":\"" << json_escape(genre) << "\",";
+    json << "\"comment\":\"" << json_escape(comment) << "\",";
+    json << "\"year\":" << year << ",";
+    json << "\"track\":" << track << ",";
+    json << "\"disc\":" << disc << ",";
+    json << "\"album_art_path\":\"" << json_escape(art_png_path) << "\",";
+    json << "\"flac_vorbis\":" << (flac_vorbis ? "true" : "false") << ",";
+    json << "\"mp3_id3v24\":" << (mp3_id3v24 ? "true" : "false") << ",";
+    json << "\"mp4_itunes_atoms\":" << (mp4_atoms ? "true" : "false");
+    json << "}";
+
+    const std::string out = json.str();
+    if (static_cast<int>(out.size()) >= out_cap) return -2;
+
+    std::memset(out_json, 0, static_cast<size_t>(out_cap));
+    std::memcpy(out_json, out.data(), out.size());
+    return 0;
+}
 
 int ace_analyze_file(
     const char*      path,

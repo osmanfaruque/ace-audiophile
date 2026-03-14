@@ -284,6 +284,16 @@ int ace_analyze_file(
     void* userdata
 );
 
+/**
+ * Extract format-specific metadata as JSON (A4.2).
+ *
+ * Uses TagLib inside the C++ engine and returns a UTF-8 JSON object in
+ * `out_json`. The caller provides storage via `out_cap`.
+ *
+ * Returns 0 on success, negative on error.
+ */
+int ace_extract_metadata_json(const char* path, char* out_json, int out_cap);
+
 /* ── Callbacks (set once before ace_play) ─────────────────────────────────── */
 
 /** Called from the audio thread every ~16 ms with FFT + level data. */

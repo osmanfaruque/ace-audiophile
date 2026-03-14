@@ -515,6 +515,26 @@ pub async fn analyze_file(app: &AppHandle, file_path: &str) -> Result<FileAnalys
         .to_string_lossy()
         .into_owned();
 
+    // A4.2 — metadata extraction via TagLib in the C++ engine (best-effort)
+    let metadata_chunks = unsafe {
+        match sym::<unsafe extern "C" fn(*const i8, *mut i8, i32) -> i32>(b"ace_extract_metadata_json\0") {
+            Ok(ace_extract_metadata_json) => {
+                let mut buf = [0i8; 8192];
+                let rc = ace_extract_metadata_json(c_path.as_ptr(), buf.as_mut_ptr(), buf.len() as i32);
+                if rc == 0 {
+                    CStr::from_ptr(buf.as_ptr())
+                        .to_str()
+                        .ok()
+                        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+                        .unwrap_or_else(|| serde_json::json!({}))
+                } else {
+                    serde_json::json!({})
+                }
+            }
+            Err(_) => serde_json::json!({}),
+        }
+    };
+
     app.emit("ace://analysis-progress", 100u8).ok();
 
     Ok(FileAnalysisResult {
@@ -551,7 +571,7 @@ pub async fn analyze_file(app: &AppHandle, file_path: &str) -> Result<FileAnalys
         true_peak_db: c_analysis.true_peak_dbtp as f64,
         crest_factor_db: 0.0,
         container: codec,
-        chunks: serde_json::json!([]),
+        chunks: metadata_chunks,
     })
 }
 
