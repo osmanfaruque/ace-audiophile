@@ -162,6 +162,16 @@ pub struct MetadataWritePayload {
     pub disc_total: u32,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AutoTagCandidatePayload {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub year: String,
+    pub score: u8,
+}
+
 // ── Commands ─────────────────────────────────────────────────
 
 #[tauri::command]
@@ -273,4 +283,47 @@ pub async fn ace_stop_watcher(_app: AppHandle) -> Result<(), AppError> {
 #[tauri::command]
 pub async fn ace_write_metadata(_app: AppHandle, payload: MetadataWritePayload) -> Result<(), AppError> {
     crate::bridge::write_metadata(payload).map_err(|e| AppError::MetadataWriteFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_acoustid_lookup(_app: AppHandle, file_path: String) -> Result<Vec<AutoTagCandidatePayload>, AppError> {
+    let rows = crate::autotag::acoustid_lookup(&file_path)
+        .await
+        .map_err(|e| AppError::AutoTagFailed(e.to_string()))?;
+    Ok(rows.into_iter().map(|r| AutoTagCandidatePayload {
+        id: r.id,
+        title: r.title,
+        artist: r.artist,
+        album: r.album,
+        year: r.year,
+        score: r.score,
+    }).collect())
+}
+
+#[tauri::command]
+pub async fn ace_musicbrainz_search(_app: AppHandle, query: String) -> Result<Vec<AutoTagCandidatePayload>, AppError> {
+    let rows = crate::autotag::musicbrainz_search(&query)
+        .await
+        .map_err(|e| AppError::AutoTagFailed(e.to_string()))?;
+    Ok(rows.into_iter().map(|r| AutoTagCandidatePayload {
+        id: r.id,
+        title: r.title,
+        artist: r.artist,
+        album: r.album,
+        year: r.year,
+        score: r.score,
+    }).collect())
+}
+
+#[tauri::command]
+pub async fn ace_fetch_embed_cover_art(
+    _app: AppHandle,
+    file_path: String,
+    release_mbid: String,
+) -> Result<(), AppError> {
+    let temp_path = crate::autotag::fetch_cover_art_to_temp(&release_mbid)
+        .await
+        .map_err(|e| AppError::AutoTagFailed(e.to_string()))?;
+    crate::bridge::embed_cover_art(&file_path, &temp_path)
+        .map_err(|e| AppError::AutoTagFailed(e.to_string()))
 }

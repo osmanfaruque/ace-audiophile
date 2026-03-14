@@ -9,6 +9,7 @@
 #include <fileref.h>
 #include <tag.h>
 #include <flacfile.h>
+#include <flacpicture.h>
 #include <xiphcomment.h>
 #include <mpegfile.h>
 #include <id3v2tag.h>
@@ -760,6 +761,73 @@ int ace_write_metadata(const char* path, const AceTagWrite* tags)
     }
 
     return ok ? 0 : -3;
+}
+
+int ace_embed_cover_art(const char* path, const char* image_path)
+{
+    if (!path || !image_path) return -1;
+
+    std::ifstream in(image_path, std::ios::binary);
+    if (!in) return -2;
+    std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (bytes.empty()) return -3;
+
+    const std::string p(path);
+    const std::string ext = lowercase_ext(p);
+
+    const std::string img = lowercase_ext(image_path);
+    const bool is_png = img == "png";
+    const char* mime = is_png ? "image/png" : "image/jpeg";
+    TagLib::ByteVector data(bytes.data(), static_cast<unsigned int>(bytes.size()));
+
+    if (ext == "flac") {
+        TagLib::FLAC::File flac(path);
+        if (!flac.isValid()) return -4;
+
+        auto* picture = new TagLib::FLAC::Picture();
+        picture->setType(TagLib::FLAC::Picture::FrontCover);
+        picture->setMimeType(mime);
+        picture->setData(data);
+        flac.addPicture(picture);
+        return flac.save() ? 0 : -5;
+    }
+
+    if (ext == "mp3") {
+        TagLib::MPEG::File mpeg(path);
+        auto* id3 = mpeg.ID3v2Tag(true);
+        if (!id3) return -6;
+
+        auto* frame = new TagLib::ID3v2::AttachedPictureFrame();
+        frame->setType(TagLib::ID3v2::AttachedPictureFrame::FrontCover);
+        frame->setMimeType(mime);
+        frame->setPicture(data);
+        id3->addFrame(frame);
+
+        return mpeg.save(
+            TagLib::MPEG::File::ID3v2,
+            TagLib::File::StripOthers,
+            TagLib::ID3v2::v4,
+            TagLib::File::Duplicate
+        ) ? 0 : -7;
+    }
+
+    if (ext == "m4a" || ext == "mp4" || ext == "aac") {
+        TagLib::MP4::File mp4(path);
+        auto* mp4_tag = mp4.tag();
+        if (!mp4_tag) return -8;
+
+        TagLib::MP4::CoverArt::Format fmt = is_png
+            ? TagLib::MP4::CoverArt::PNG
+            : TagLib::MP4::CoverArt::JPEG;
+
+        TagLib::MP4::CoverArtList arts;
+        arts.append(TagLib::MP4::CoverArt(fmt, data));
+        mp4_tag->setItem("covr", TagLib::MP4::Item(arts));
+
+        return mp4.save() ? 0 : -9;
+    }
+
+    return -10;
 }
 
 int ace_analyze_file(

@@ -26,6 +26,8 @@ libloading   = "0.8"
 walkdir      = "2"
 notify       = { version = "7", features = ["macos_fsevent"] }
 tokio        = { version = "1", features = ["sync"] }
+reqwest      = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+urlencoding  = "2"
 
 [profile.release]
 panic   = "abort"

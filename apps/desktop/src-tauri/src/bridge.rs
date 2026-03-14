@@ -640,6 +640,22 @@ pub fn write_metadata(payload: MetadataWritePayload) -> Result<(), BoxError> {
     Ok(())
 }
 
+pub fn embed_cover_art(file_path: &str, image_path: &str) -> Result<(), BoxError> {
+    let c_file = CString::new(file_path)?;
+    let c_img = CString::new(image_path)?;
+
+    let rc = unsafe {
+        let ace_embed_cover_art: Symbol<unsafe extern "C" fn(*const i8, *const i8) -> i32> =
+            sym(b"ace_embed_cover_art\0")?;
+        ace_embed_cover_art(c_file.as_ptr(), c_img.as_ptr())
+    };
+
+    if rc != 0 {
+        return Err(format!("ace_embed_cover_art failed for '{}' (code {rc})", file_path).into());
+    }
+    Ok(())
+}
+
 // ── Folder scanning (A4.1.1) ─────────────────────────────────
 
 pub const AUDIO_EXTENSIONS: &[&str] = &[

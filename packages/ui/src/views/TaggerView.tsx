@@ -270,8 +270,9 @@ function TechnicalPanel({ track }: { track: AudioTrack }) {
 
 // ── MusicBrainz Panel ─────────────────────────────────────────────────────────
 
-function MusicBrainzPanel({ fields, onApply }: {
+function MusicBrainzPanel({ fields, filePath, onApply }: {
   fields: TagFields
+  filePath: string
   onApply: (result: MbResult) => void
 }) {
   const [query, setQuery] = useState(fields.title || '')
@@ -281,18 +282,33 @@ function MusicBrainzPanel({ fields, onApply }: {
 
   const handleSearch = useCallback(async () => {
     setStatus('loading')
-    await new Promise(r => setTimeout(r, 800))
-    setResults(simulateMbSearch(query))
-    setStatus('done')
+    try {
+      const { getAudioEngine } = await import('@/lib/audioEngine')
+      const rows = await getAudioEngine().searchMusicBrainz(query)
+      setResults(rows)
+      setStatus('done')
+    } catch (e) {
+      console.error('[TaggerView] MusicBrainz search failed:', e)
+      setStatus('error')
+      setResults([])
+    }
   }, [query])
 
   const handleFingerprint = useCallback(async () => {
     setFingerprintStatus('loading')
-    await new Promise(r => setTimeout(r, 1200))
-    setResults(simulateMbSearch(fields.title || 'Fingerprint Match'))
-    setFingerprintStatus('done')
-    setStatus('done')
-  }, [fields.title])
+    try {
+      const { getAudioEngine } = await import('@/lib/audioEngine')
+      const rows = await getAudioEngine().lookupAcoustId(filePath)
+      setResults(rows)
+      setFingerprintStatus('done')
+      setStatus('done')
+    } catch (e) {
+      console.error('[TaggerView] AcoustID lookup failed:', e)
+      setFingerprintStatus('error')
+      setStatus('error')
+      setResults([])
+    }
+  }, [filePath])
 
   return (
     <div className="flex flex-col gap-3">
@@ -342,11 +358,11 @@ function MusicBrainzPanel({ fields, onApply }: {
       </div>
 
       {/* Results */}
-      {status === 'done' && (
+      {(status === 'done' || status === 'error') && (
         <div className="flex flex-col gap-1 max-h-60 overflow-y-auto">
           {results.length === 0 ? (
             <div className="text-xs py-4 text-center" style={{ color: 'var(--ace-text-muted)' }}>
-              No results found.
+              {status === 'error' ? 'Lookup failed. Check network / API config.' : 'No results found.'}
             </div>
           ) : (
             results.map(r => (
@@ -477,7 +493,8 @@ export function TaggerView() {
   }, [files])
 
   // ── Apply MusicBrainz result ──
-  const applyMbResult = useCallback((result: MbResult) => {
+  const applyMbResult = useCallback(async (result: MbResult) => {
+    const currentPath = selected?.track.filePath
     setFiles(prev => prev.map((f, i) => {
       if (i !== selectedIdx) return f
       const edited: TagFields = {
@@ -490,7 +507,16 @@ export function TaggerView() {
       return { ...f, edited, dirty: !fieldsEqual(f.original, edited) }
     }))
     setActivePanel('tags')
-  }, [selectedIdx])
+
+    if (currentPath && result.id) {
+      try {
+        const { getAudioEngine } = await import('@/lib/audioEngine')
+        await getAudioEngine().fetchAndEmbedCoverArt(currentPath, result.id)
+      } catch (e) {
+        console.error('[TaggerView] Cover art fetch/embed failed:', e)
+      }
+    }
+  }, [selectedIdx, selected])
 
   // ── Batch update (apply field to all files) ──
   const applyToAll = useCallback((key: keyof TagFields) => {
@@ -770,6 +796,7 @@ export function TaggerView() {
                 <div className="max-w-lg">
                   <MusicBrainzPanel
                     fields={selected.edited}
+                    filePath={selected.track.filePath}
                     onApply={applyMbResult}
                   />
                 </div>

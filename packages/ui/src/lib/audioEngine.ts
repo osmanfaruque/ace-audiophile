@@ -104,6 +104,15 @@ export interface MetadataWritePayload {
   discTotal: number
 }
 
+export interface AutoTagCandidate {
+  id: string
+  title: string
+  artist: string
+  album: string
+  year: string
+  score: number
+}
+
 // ─────────────────────────────────────────────────────────────
 //  Engine Interface
 // ─────────────────────────────────────────────────────────────
@@ -136,6 +145,11 @@ export interface IAudioEngine {
 
   // Metadata (A4.3.1)
   writeMetadata(payload: MetadataWritePayload): Promise<void>
+
+  // AutoTag (A4.3.2 / A4.3.3 / A4.3.4)
+  lookupAcoustId(filePath: string): Promise<AutoTagCandidate[]>
+  searchMusicBrainz(query: string): Promise<AutoTagCandidate[]>
+  fetchAndEmbedCoverArt(filePath: string, releaseMbid: string): Promise<void>
 
   // Scanning (A3.1.5)
   scanFolder(path: string, onProgress?: (file: string, count: number) => void): Promise<number>
@@ -246,6 +260,18 @@ class TauriAudioEngine implements IAudioEngine {
         disc_total: payload.discTotal,
       },
     })
+  }
+
+  async lookupAcoustId(filePath: string): Promise<AutoTagCandidate[]> {
+    return invoke<AutoTagCandidate[]>('ace_acoustid_lookup', { filePath })
+  }
+
+  async searchMusicBrainz(query: string): Promise<AutoTagCandidate[]> {
+    return invoke<AutoTagCandidate[]>('ace_musicbrainz_search', { query })
+  }
+
+  async fetchAndEmbedCoverArt(filePath: string, releaseMbid: string) {
+    await invoke('ace_fetch_embed_cover_art', { filePath, releaseMbid })
   }
 
   // ── A3.1.5 — Folder scanning ──────────────────────────

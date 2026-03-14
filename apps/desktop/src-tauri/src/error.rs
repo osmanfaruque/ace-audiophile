@@ -19,6 +19,8 @@ pub enum AppError {
     AnalysisFailed(String),
     /// Metadata write-back failed.
     MetadataWriteFailed(String),
+    /// AutoTag flow failed (AcoustID / MusicBrainz / Cover Art Archive).
+    AutoTagFailed(String),
     /// Folder scan error (path not found, permission denied, etc.).
     ScanFailed(String),
     /// File-system watcher error (notify crate).
@@ -37,6 +39,7 @@ impl std::fmt::Display for AppError {
             Self::DeviceNotFound(m) => write!(f, "Device not found: {m}"),
             Self::AnalysisFailed(m) => write!(f, "Analysis failed: {m}"),
             Self::MetadataWriteFailed(m) => write!(f, "Metadata write failed: {m}"),
+            Self::AutoTagFailed(m) => write!(f, "AutoTag failed: {m}"),
             Self::ScanFailed(m) => write!(f, "Scan failed: {m}"),
             Self::WatcherFailed(m) => write!(f, "Watcher failed: {m}"),
             Self::DspError(m) => write!(f, "DSP error: {m}"),
@@ -63,6 +66,7 @@ impl Serialize for AppError {
             Self::DeviceNotFound(m) => ("DeviceNotFound", m.as_str()),
             Self::AnalysisFailed(m) => ("AnalysisFailed", m.as_str()),
             Self::MetadataWriteFailed(m) => ("MetadataWriteFailed", m.as_str()),
+            Self::AutoTagFailed(m) => ("AutoTagFailed", m.as_str()),
             Self::ScanFailed(m) => ("ScanFailed", m.as_str()),
             Self::WatcherFailed(m) => ("WatcherFailed", m.as_str()),
             Self::DspError(m) => ("DspError", m.as_str()),

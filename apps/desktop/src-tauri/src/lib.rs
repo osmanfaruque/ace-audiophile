@@ -7,6 +7,7 @@ mod commands;
 mod bridge;
 mod error;
 mod watcher;
+mod autotag;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -46,6 +47,9 @@ pub fn run() {
             commands::ace_start_watcher,
             commands::ace_stop_watcher,
             commands::ace_write_metadata,
+            commands::ace_acoustid_lookup,
+            commands::ace_musicbrainz_search,
+            commands::ace_fetch_embed_cover_art,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Audiophile Ace");

@@ -316,6 +316,14 @@ typedef struct AceTagWrite {
  */
 int ace_write_metadata(const char* path, const AceTagWrite* tags);
 
+/**
+ * Embed cover art image into file tags (A4.3.4).
+ *
+ * `image_path` points to a local JPEG/PNG file downloaded from Cover Art
+ * Archive. Returns 0 on success.
+ */
+int ace_embed_cover_art(const char* path, const char* image_path);
+
 /* ── Callbacks (set once before ace_play) ─────────────────────────────────── */
 
 /** Called from the audio thread every ~16 ms with FFT + level data. */

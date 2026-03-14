@@ -141,9 +141,9 @@
 ### A4.3 Metadata Editing + AutoTag
 
 - [x] **A4.3.1** Tag write-back engine (FLAC Vorbis, ID3v2.4, MP4 atoms)
-- [ ] **A4.3.2** AcoustID fingerprint generation and lookup
-- [ ] **A4.3.3** MusicBrainz metadata fetch and confidence scoring
-- [ ] **A4.3.4** Cover Art Archive fetch + embed into file tags
+- [x] **A4.3.2** AcoustID fingerprint generation and lookup
+- [x] **A4.3.3** MusicBrainz metadata fetch and confidence scoring
+- [x] **A4.3.4** Cover Art Archive fetch + embed into file tags
 
 ---
 
