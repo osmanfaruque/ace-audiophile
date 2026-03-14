@@ -113,6 +113,17 @@ export interface AutoTagCandidate {
   score: number
 }
 
+export interface SchemaVersion {
+  version: number
+  description: string
+  appliedAt: number
+}
+
+export interface DbExportResult {
+  json: string
+  outputPath?: string | null
+}
+
 // ─────────────────────────────────────────────────────────────
 //  Engine Interface
 // ─────────────────────────────────────────────────────────────
@@ -150,6 +161,10 @@ export interface IAudioEngine {
   lookupAcoustId(filePath: string): Promise<AutoTagCandidate[]>
   searchMusicBrainz(query: string): Promise<AutoTagCandidate[]>
   fetchAndEmbedCoverArt(filePath: string, releaseMbid: string): Promise<void>
+
+  // DB infra (A5.2.1 / A5.2.2)
+  getSchemaVersions(): Promise<SchemaVersion[]>
+  exportDatabaseAsJson(outputPath?: string): Promise<DbExportResult>
 
   // Scanning (A3.1.5)
   scanFolder(path: string, onProgress?: (file: string, count: number) => void): Promise<number>
@@ -272,6 +287,25 @@ class TauriAudioEngine implements IAudioEngine {
 
   async fetchAndEmbedCoverArt(filePath: string, releaseMbid: string) {
     await invoke('ace_fetch_embed_cover_art', { filePath, releaseMbid })
+  }
+
+  async getSchemaVersions(): Promise<SchemaVersion[]> {
+    const rows = await invoke<Array<{ version: number; description: string; applied_at: number }>>('ace_get_schema_versions')
+    return rows.map((row) => ({
+      version: row.version,
+      description: row.description,
+      appliedAt: row.applied_at,
+    }))
+  }
+
+  async exportDatabaseAsJson(outputPath?: string): Promise<DbExportResult> {
+    const payload = await invoke<{ json: string; output_path?: string | null }>('ace_export_db_json', {
+      outputPath,
+    })
+    return {
+      json: payload.json,
+      outputPath: payload.output_path ?? null,
+    }
   }
 
   // ── A3.1.5 — Folder scanning ──────────────────────────

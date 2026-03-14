@@ -27,6 +27,8 @@ pub enum AppError {
     WatcherFailed(String),
     /// DSP state application failed.
     DspError(String),
+    /// Database migration / export / query failure.
+    DatabaseFailed(String),
     /// Catch-all for unexpected errors.
     Internal(String),
 }
@@ -43,6 +45,7 @@ impl std::fmt::Display for AppError {
             Self::ScanFailed(m) => write!(f, "Scan failed: {m}"),
             Self::WatcherFailed(m) => write!(f, "Watcher failed: {m}"),
             Self::DspError(m) => write!(f, "DSP error: {m}"),
+            Self::DatabaseFailed(m) => write!(f, "Database error: {m}"),
             Self::Internal(m) => write!(f, "Internal error: {m}"),
         }
     }
@@ -70,6 +73,7 @@ impl Serialize for AppError {
             Self::ScanFailed(m) => ("ScanFailed", m.as_str()),
             Self::WatcherFailed(m) => ("WatcherFailed", m.as_str()),
             Self::DspError(m) => ("DspError", m.as_str()),
+            Self::DatabaseFailed(m) => ("DatabaseFailed", m.as_str()),
             Self::Internal(m) => ("Internal", m.as_str()),
         };
         let mut s = serializer.serialize_struct("AppError", 2)?;

@@ -58,6 +58,8 @@ pub fn run() {
             commands::ace_acoustid_lookup,
             commands::ace_musicbrainz_search,
             commands::ace_fetch_embed_cover_art,
+            commands::ace_get_schema_versions,
+            commands::ace_export_db_json,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Audiophile Ace");

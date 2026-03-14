@@ -161,8 +161,8 @@
 
 ### A5.2 Infrastructure
 
-- [ ] **A5.2.1** Schema migration versioning (version table + up/down scripts)
-- [ ] **A5.2.2** Full DB backup / export as JSON
+- [x] **A5.2.1** Schema migration versioning (version table + up/down scripts)
+- [x] **A5.2.2** Full DB backup / export as JSON
 
 ### A5.3 View Wiring
 

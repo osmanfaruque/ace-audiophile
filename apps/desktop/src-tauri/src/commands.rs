@@ -172,6 +172,19 @@ pub struct AutoTagCandidatePayload {
     pub score: u8,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SchemaVersionPayload {
+    pub version: i64,
+    pub description: String,
+    pub applied_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DbExportPayload {
+    pub json: String,
+    pub output_path: Option<String>,
+}
+
 // ── Commands ─────────────────────────────────────────────────
 
 #[tauri::command]
@@ -326,4 +339,44 @@ pub async fn ace_fetch_embed_cover_art(
         .map_err(|e| AppError::AutoTagFailed(e.to_string()))?;
     crate::bridge::embed_cover_art(&file_path, &temp_path)
         .map_err(|e| AppError::AutoTagFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_get_schema_versions(app: AppHandle) -> Result<Vec<SchemaVersionPayload>, AppError> {
+    let exported = crate::db::export_db_json(&app, None)
+        .map_err(|e| AppError::DatabaseFailed(e.to_string()))?;
+
+    let root: serde_json::Value = serde_json::from_str(&exported)
+        .map_err(|e| AppError::DatabaseFailed(e.to_string()))?;
+
+    let versions = root
+        .get("schema_versions")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| AppError::DatabaseFailed("schema_versions missing in export payload".to_string()))?;
+
+    let mut out = Vec::with_capacity(versions.len());
+    for item in versions {
+        out.push(SchemaVersionPayload {
+            version: item.get("version").and_then(|v| v.as_i64()).unwrap_or_default(),
+            description: item
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            applied_at: item.get("applied_at").and_then(|v| v.as_i64()).unwrap_or_default(),
+        });
+    }
+
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn ace_export_db_json(
+    app: AppHandle,
+    output_path: Option<String>,
+) -> Result<DbExportPayload, AppError> {
+    let json = crate::db::export_db_json(&app, output_path.clone())
+        .map_err(|e| AppError::DatabaseFailed(e.to_string()))?;
+
+    Ok(DbExportPayload { json, output_path })
 }
