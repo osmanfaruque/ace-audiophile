@@ -20,8 +20,8 @@
 | # | Feature | Windows | Android | Linux |
 |---|---|---|---|---|
 | 1 | C++ Engine Wiring | A1 | B1 | C1 |
-| 2 | Rust Bridge IPC | A2 | B2 | C2 |
-| 3 | Frontend Integration | A3 | B3 | C3 |
+| 2 | Platform App Foundation | A2 | B2 | C2 |
+| 3 | App/UI + System Integration | A3 | B3 | C3 |
 | 4 | File Scanning + Metadata | A4 | B4 | C4 |
 | 5 | Database (SQLite) | A5 | B5 | C5 |
 | 6 | RadioView | A6 | B6 | C6 |
@@ -38,7 +38,7 @@
 
 Examples:
   A1.2.3   → Windows, C++ Engine, WASAPI backend, format negotiation
-  B6.4.2   → Android, RadioView, UI components, NowPlayingBanner
+  B6.2.2   → Android, RadioView, touch UI, responsive layout
   C2.2.3   → Linux, Rust Bridge, MPRIS2 D-Bus, metadata emitter
 ```
 

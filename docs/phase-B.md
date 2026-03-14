@@ -1,7 +1,7 @@
 # Phase B — Android
 
 > Second platform. Reuses shared C++ engine code from Phase A.  
-> Focus: NDK cross-compilation, Oboe audio, touch UX, Android system integration.
+> Focus: Kotlin-native Android app, NDK/Oboe audio, touch UX, Android system integration, and Play Store release readiness.
 
 ---
 
@@ -22,7 +22,7 @@
 ### B1.3 JNI / FFI Bridge
 
 - [ ] **B1.3.1** `JNI_OnLoad` bootstrap — register native methods
-- [ ] **B1.3.2** Java → C++ forwarding for all `ace_*` API calls
+- [ ] **B1.3.2** Kotlin/JNI forwarding for all `ace_*` API calls
 
 ### B1.4 Shared Code
 
@@ -31,36 +31,43 @@
 
 ---
 
-## B2 — Rust Bridge (Mobile)
+## B2 — Kotlin Android App Foundation
 
-### B2.1 Entry Point
+### B2.1 Project Setup
 
-- [ ] **B2.1.1** `tauri::mobile_entry_point` in `lib.rs`
-- [ ] **B2.1.2** Load `libace_engine.so` from APK native libs dir
+- [ ] **B2.1.1** Android app module in Kotlin (`:app`) with AGP + Kotlin DSL
+- [ ] **B2.1.2** ABI packaging for `arm64-v8a` + optional `x86_64` debug builds
+- [ ] **B2.1.3** Load `libace_engine.so` from APK native libs dir
 
-### B2.2 Commands
+### B2.2 App Architecture
 
-- [ ] **B2.2.1** Same 14 commands as A2.2 (shared `commands.rs`)
+- [ ] **B2.2.1** Jetpack Compose UI shell + Navigation graph
+- [ ] **B2.2.2** ViewModel + Kotlin Flow state pipeline (player, DSP, library, radio)
+- [ ] **B2.2.3** Repository layer for native engine bridge + local persistence
 
-### B2.3 Mobile Optimizations
+### B2.3 Play Store Readiness
 
-- [ ] **B2.3.1** Battery-aware polling — `fft-frame` @ 30 Hz on battery, 60 Hz on charger
-- [ ] **B2.3.2** Reduce `level-meter` to 15 Hz on battery
+- [ ] **B2.3.1** Android App Bundle (`.aab`) release pipeline
+- [ ] **B2.3.2** Play App Signing + keystore management
+- [ ] **B2.3.3** Internal testing track upload checklist (versionCode/versionName, changelog)
 
 ---
 
-## B3 — Frontend Integration
+## B3 — Kotlin Bridge + System Integration
 
-### B3.1 Shared Code
+### B3.1 Native Bridge Layer
 
-- [ ] **B3.1.1** Same `audioEngine.ts` (shared with A3.1)
-- [ ] **B3.1.2** Same event listeners (shared with A3.2)
+- [ ] **B3.1.1** Kotlin `external` bindings for all core playback/DSP/analyzer calls
+- [ ] **B3.1.2** Native callback/event bridge to Kotlin Flow (`fft`, meters, position, errors)
+- [ ] **B3.1.3** Battery-aware polling policy: `fft-frame` @ 30 Hz on battery, 60 Hz on charger
+- [ ] **B3.1.4** Reduce `level-meter` to 15 Hz on battery
 
 ### B3.2 Android System Integration
 
 - [ ] **B3.2.1** Android `MediaSession` update on track change
 - [ ] **B3.2.2** Media keys handling (Bluetooth headset buttons)
 - [ ] **B3.2.3** Audio focus management (`AudioManager.requestAudioFocus`)
+- [ ] **B3.2.4** Foreground playback service + media notification controls
 
 ---
 
@@ -85,9 +92,10 @@
 
 ## B5 — Database
 
-- [ ] **B5.1** Same SQLite schema as A5.1 (SQLite bundled in APK)
+- [ ] **B5.1** Same SQLite schema as A5.1 (SQLite in app sandbox)
 - [ ] **B5.2** Same migration system (A5.2)
-- [ ] **B5.3** Same view wiring (A5.3)
+- [ ] **B5.3** Kotlin data access layer (Room or direct SQLite wrapper)
+- [ ] **B5.4** Same feature wiring as A5.3 (playlists, recap, ratings, library filters)
 
 ---
 
@@ -114,7 +122,7 @@
 ## B7 — Analyzer + ABX
 
 - [ ] **B7.1** Same C++ analysis functions as A7.2 (shared)
-- [ ] **B7.2** Same Tauri command + AnalyzerView wiring (A7.3–A7.4)
+- [ ] **B7.2** Kotlin bridge + Compose Analyzer wiring (equivalent to A7.3-A7.4)
 - [ ] **B7.3** Touch-optimized ABX controls (larger tap targets)
 
 ---
@@ -123,7 +131,7 @@
 
 - [ ] **B8.1** Same C++ correction algorithm as A8.3 (shared)
 - [ ] **B8.2** CSV import via Android file picker (SAF intent)
-- [ ] **B8.3** Same GearView wiring (A8.4)
+- [ ] **B8.3** Kotlin/Compose Gear screen wiring (equivalent to A8.4)
 
 ---
 
@@ -137,7 +145,7 @@
 
 ### B9.2 Shared Code
 
-- [ ] **B9.2.1** Same Qobuz API client as A9.2 (shared TypeScript)
+- [ ] **B9.2.1** Same Qobuz API contract as A9.2 (Kotlin implementation)
 - [ ] **B9.2.2** Same stream playback as A9.4 (shared C++)
 
 ### B9.3 Offline Cache
@@ -159,3 +167,4 @@
 3. Radio streams with notification controls
 4. Library scan from device storage works
 5. Qobuz streams with Android Auto metadata
+6. Signed `.aab` passes Play Console internal testing rollout

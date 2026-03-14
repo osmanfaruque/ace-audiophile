@@ -4,8 +4,8 @@
 
 ## Overview
 
-The Android platform uses **Tauri v2 Mobile** to wrap the same Next.js frontend in a native Android `Activity`.  
-The C++ audio engine (`ace_engine`) is compiled as an `.so` with the Android NDK and loaded via JNI/FFI.
+The Android platform uses a **Kotlin-native app** (Jetpack Compose + Android framework components).  
+The shared C++ audio engine (`ace_engine`) is compiled as an `.so` with the Android NDK and loaded via JNI.
 
 ---
 
@@ -13,12 +13,12 @@ The C++ audio engine (`ace_engine`) is compiled as an `.so` with the Android NDK
 
 | Layer | Technology |
 |---|---|
-| Shell | Tauri v2 mobile (`tauri::mobile_entry_point`) |
-| Frontend | Next.js 15 static export served from assets |
+| App | Kotlin + Android Gradle Plugin |
+| UI | Jetpack Compose + Navigation |
 | Audio engine | C++20 `.so` (Android NDK r26) |
 | Audio output | **Oboe** library (AAudio / OpenSL ES) |
 | USB audio | Android USB Audio Class 2.0 via `UsbManager` |
-| IPC | Tauri `invoke()` + `emit()` (same API as desktop) |
+| Bridge | JNI `external` calls + Kotlin Flow event bridge |
 
 ---
 
@@ -26,11 +26,11 @@ The C++ audio engine (`ace_engine`) is compiled as an `.so` with the Android NDK
 
 ```
 ┌──────────────────────────────────────────┐
-│  Next.js UI  (Android WebView / Chroma)  │
-│  invoke("ace_play") ──────────────────►  │
-│                          Rust bridge     │
-│                          (lib.rs)        │
-│                              │ JNI/FFI   │
+│  Kotlin UI (Compose)                      │
+│  ViewModel / Flow ─────────────────────►  │
+│                        JNI bridge         │
+│                 (Kotlin `external`)       │
+│                              │            │
 │                      libace_engine.so    │
 │                          (C++ / Oboe)    │
 │                              │           │
@@ -62,9 +62,9 @@ The C++ audio engine (`ace_engine`) is compiled as an `.so` with the Android NDK
 
 | Format | Notes |
 |---|---|
-| APK (debug) | `pnpm tauri android build --debug` |
-| APK (release) | `pnpm tauri android build` |
-| AAB | `pnpm tauri android build --apk false` (Play Store) |
+| APK (debug) | `./gradlew :app:assembleDebug` |
+| APK (release) | `./gradlew :app:assembleRelease` |
+| AAB | `./gradlew :app:bundleRelease` (Play Store) |
 
 Minimum SDK: **Android 24** (7.0 Nougat) — required for AAudio; Oboe falls back on older.  
 Target SDK: 35 (Android 15).
@@ -74,27 +74,26 @@ Target SDK: 35 (Android 15).
 ## Development Workflow
 
 ```bash
-# Start dev server
-pnpm --filter @ace/ui dev
+# Build and install debug app
+./gradlew :app:installDebug
 
-# In second terminal — run on connected device or emulator
-cd apps/android
-pnpm tauri android dev
+# Or launch from Android Studio
 ```
 
-Dev URL: `http://10.0.2.2:3000` (emulator localhost alias configured in `tauri.conf.json`).  
-For physical device: set `devUrl` to LAN IP of dev machine.
+For profiling and optimization, use Android Studio Profiler + `adb logcat` + `systrace`.
 
 ---
 
 ## Permissions (`AndroidManifest.xml`)
 
 ```xml
-<uses-permission android:name="android.permission.RECORD_AUDIO" />
-<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-<uses-permission android:name="android.permission.USB_PERMISSION" />
+<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.WAKE_LOCK" />
 <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 ```
+
+Use `READ_EXTERNAL_STORAGE` only as legacy fallback for API 24-32.
 
 ---
 
@@ -125,6 +124,5 @@ For physical device: set `devUrl` to LAN IP of dev machine.
 
 ## Capabilities
 
-Tauri capability file: `apps/android/src-tauri/capabilities/main.json`  
-Granted permissions: `shell:open`, `dialog:open`, `fs:read`  
-(No `notification` plugin — uses Android native notifications instead.)
+No Tauri capability file is used in Kotlin-native Android mode.  
+Permissions and services are managed via `AndroidManifest.xml`, runtime permission flow, and foreground service declarations.
