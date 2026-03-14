@@ -356,7 +356,13 @@ export interface GearProfile {
   source: 'autoeq' | 'crinacle' | 'oratory' | 'custom'
 }
 
-export type TargetCurve = 'harman2019' | 'harmanIE2019' | 'diffuseField' | 'freeField' | 'custom'
+export type TargetCurve =
+  | 'harman2019'
+  | 'harmanIE2018'
+  | 'harmanIE2019'
+  | 'diffuseField'
+  | 'freeField'
+  | 'custom'
 
 // ── Audio Recap / Stats ───────────────────────
 export interface ListeningStats {

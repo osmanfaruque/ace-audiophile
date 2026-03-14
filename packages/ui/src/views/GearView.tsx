@@ -14,6 +14,12 @@ import {
   parseSquigLinkProfile,
   toGearProfileFromFr,
 } from '@/lib/frImport'
+import {
+  DEFAULT_CUSTOM_TARGET,
+  getCurveAnchors,
+  getTargetCurvePoints,
+  type TargetAnchor,
+} from '@/lib/targetCurves'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -25,8 +31,8 @@ const GEAR_TYPES = [
 ] as const
 
 const TARGET_CURVES: { value: TargetCurve; label: string; desc: string }[] = [
-  { value: 'harman2019', label: 'Harman 2019 (Over-ear)', desc: 'Industry-standard preference target for over-ear headphones' },
-  { value: 'harmanIE2019', label: 'Harman IE 2019', desc: 'Preference target for in-ear monitors' },
+  { value: 'harmanIE2018', label: 'Harman 2018 In-Ear', desc: 'Built-in in-ear preference target' },
+  { value: 'harman2019', label: 'Harman 2019 Over-Ear', desc: 'Built-in over-ear preference target' },
   { value: 'diffuseField', label: 'Diffuse Field', desc: 'Flat response compensated for ear/head diffraction' },
   { value: 'freeField', label: 'Free Field', desc: 'Flat response in anechoic conditions' },
   { value: 'custom', label: 'Custom', desc: 'User-defined preference curve' },
@@ -61,24 +67,6 @@ function generateSampleFR(type: GearProfile['type'], seed: number): number[] {
   })
 }
 
-function generateTargetFR(target: TargetCurve, frequencies: number[]): number[] {
-  return frequencies.map((f) => {
-    const x = f / 20000
-    switch (target) {
-      case 'harman2019':
-        return 80 + 6 * Math.exp(-((x - 0.005) ** 2) / 0.0001) + 8 * Math.exp(-((x - 0.15) ** 2) / 0.003) - 4 * x
-      case 'harmanIE2019':
-        return 78 + 8 * Math.exp(-((x - 0.005) ** 2) / 0.00015) + 12 * Math.exp(-((x - 0.2) ** 2) / 0.004) - 5 * x
-      case 'diffuseField':
-        return 80 + 10 * Math.exp(-((x - 0.15) ** 2) / 0.005) - 2 * x
-      case 'freeField':
-        return 80 - 1.5 * x
-      default:
-        return 80
-    }
-  })
-}
-
 const SAMPLE_GEAR: GearProfile[] = [
   { id: 'hd650', name: 'HD 650', brand: 'Sennheiser', type: 'headphone', frFrequencies: FR_FREQUENCIES, frSpl: generateSampleFR('headphone', 1), correctionPresetId: null, source: 'oratory' },
   { id: 'er2xr', name: 'ER2XR', brand: 'Etymotic', type: 'iem', frFrequencies: FR_FREQUENCIES, frSpl: generateSampleFR('iem', 2), correctionPresetId: null, source: 'crinacle' },
@@ -90,34 +78,45 @@ const SAMPLE_GEAR: GearProfile[] = [
 
 // ── FR Chart (SVG) ────────────────────────────────────────────────────────────
 
-function FRChart({ gear, targetCurve, showCorrection }: {
+function FRChart({
+  gear,
+  targetCurve,
+  showCorrection,
+  customAnchors,
+  onChangeCustomAnchors,
+}: {
   gear: GearProfile
   targetCurve: TargetCurve
   showCorrection: boolean
+  customAnchors: TargetAnchor[]
+  onChangeCustomAnchors: (anchors: TargetAnchor[]) => void
 }) {
   const W = 780, H = 340
   const PAD = { top: 20, right: 30, bottom: 40, left: 50 }
   const plotW = W - PAD.left - PAD.right
   const plotH = H - PAD.top - PAD.bottom
+  const svgRef = useRef<SVGSVGElement | null>(null)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
 
-  const targetFR = useMemo(() => generateTargetFR(targetCurve, gear.frFrequencies), [targetCurve, gear.frFrequencies])
+  const targetFR = useMemo(
+    () => getTargetCurvePoints(targetCurve, gear.frFrequencies, customAnchors),
+    [targetCurve, gear.frFrequencies, customAnchors],
+  )
 
-  // Correction = target - measured
-  const correction = useMemo(() =>
-    gear.frSpl.map((spl, i) => targetFR[i] - spl),
+  const correction = useMemo(
+    () => gear.frSpl.map((spl, i) => targetFR[i] - spl),
     [gear.frSpl, targetFR],
   )
 
-  // Log-scale X mapping
   const logMin = Math.log10(20)
   const logMax = Math.log10(20000)
   const xOf = (freq: number) => PAD.left + ((Math.log10(freq) - logMin) / (logMax - logMin)) * plotW
+  const freqOfX = (x: number) => Math.pow(10, logMin + ((x - PAD.left) / plotW) * (logMax - logMin))
 
-  // Y mapping — SPL range
   const splMin = 50, splMax = 100
   const yOfSpl = (spl: number) => PAD.top + (1 - (spl - splMin) / (splMax - splMin)) * plotH
+  const splOfY = (y: number) => splMin + (1 - (y - PAD.top) / plotH) * (splMax - splMin)
 
-  // Correction Y — ±20 dB
   const corrMin = -20, corrMax = 20
   const yOfCorr = (db: number) => PAD.top + (1 - (db - corrMin) / (corrMax - corrMin)) * plotH
 
@@ -128,7 +127,42 @@ function FRChart({ gear, targetCurve, showCorrection }: {
   const targetPath = pathOfData(yOfSpl, targetFR)
   const corrPath = pathOfData(yOfCorr, correction)
 
-  // Grid frequencies
+  const editableAnchors = useMemo(
+    () => getCurveAnchors(targetCurve, customAnchors),
+    [targetCurve, customAnchors],
+  )
+
+  const updateFromEvent = useCallback((ev: MouseEvent) => {
+    if (dragIdx == null || !svgRef.current || targetCurve !== 'custom') return
+
+    const rect = svgRef.current.getBoundingClientRect()
+    const x = ((ev.clientX - rect.left) / rect.width) * W
+    const y = ((ev.clientY - rect.top) / rect.height) * H
+
+    let f = Math.min(20000, Math.max(20, freqOfX(Math.min(PAD.left + plotW, Math.max(PAD.left, x)))))
+    let s = Math.min(splMax, Math.max(splMin, splOfY(Math.min(PAD.top + plotH, Math.max(PAD.top, y)))))
+
+    const next = [...editableAnchors]
+    const prevF = dragIdx > 0 ? next[dragIdx - 1].frequencyHz : 20
+    const nextF = dragIdx < next.length - 1 ? next[dragIdx + 1].frequencyHz : 20000
+    f = Math.min(nextF * 0.98, Math.max(prevF * 1.02, f))
+
+    next[dragIdx] = { frequencyHz: f, splDb: s }
+    onChangeCustomAnchors(next)
+  }, [dragIdx, editableAnchors, onChangeCustomAnchors, plotH, plotW, targetCurve])
+
+  useEffect(() => {
+    if (dragIdx == null) return
+    const onMove = (ev: MouseEvent) => updateFromEvent(ev)
+    const onUp = () => setDragIdx(null)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [dragIdx, updateFromEvent])
+
   const gridFreqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
   const gridDb = showCorrection
     ? [-20, -15, -10, -5, 0, 5, 10, 15, 20]
@@ -137,11 +171,9 @@ function FRChart({ gear, targetCurve, showCorrection }: {
   const fmtFreq = (f: number) => f >= 1000 ? `${f / 1000}k` : `${f}`
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" style={{ fontFamily: 'var(--ace-font-mono)' }}>
-      {/* Background */}
+    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full h-full" style={{ fontFamily: 'var(--ace-font-mono)' }}>
       <rect x={PAD.left} y={PAD.top} width={plotW} height={plotH} fill="#08080c" rx="2" />
 
-      {/* Vertical grid (frequency) */}
       {gridFreqs.map(f => (
         <g key={f}>
           <line x1={xOf(f)} y1={PAD.top} x2={xOf(f)} y2={PAD.top + plotH} stroke="rgba(255,255,255,0.06)" />
@@ -151,7 +183,6 @@ function FRChart({ gear, targetCurve, showCorrection }: {
         </g>
       ))}
 
-      {/* Horizontal grid (dB) */}
       {gridDb.map(db => {
         const y = showCorrection ? yOfCorr(db) : yOfSpl(db)
         return (
@@ -165,7 +196,6 @@ function FRChart({ gear, targetCurve, showCorrection }: {
         )
       })}
 
-      {/* Axis labels */}
       <text x={W / 2} y={H - 0} textAnchor="middle" fill="rgba(255,255,255,0.25)" fontSize="9">
         Frequency (Hz)
       </text>
@@ -176,36 +206,45 @@ function FRChart({ gear, targetCurve, showCorrection }: {
 
       {showCorrection ? (
         <>
-          {/* Zero line */}
           <line x1={PAD.left} y1={yOfCorr(0)} x2={PAD.left + plotW} y2={yOfCorr(0)}
             stroke="rgba(255,255,255,0.12)" strokeDasharray="4 3" />
-          {/* Correction curve */}
           <path d={corrPath} fill="none" stroke="var(--ace-accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-          {/* Fill above/below zero */}
           <path d={corrPath + `L${xOf(20000)},${yOfCorr(0)} L${xOf(20)},${yOfCorr(0)} Z`}
             fill="var(--ace-accent)" opacity="0.08" />
         </>
       ) : (
         <>
-          {/* Target curve */}
-          <path d={targetPath} fill="none" stroke="rgba(76,175,130,0.6)" strokeWidth="1.5"
+          <path d={targetPath} fill="none" stroke="rgba(76,175,130,0.75)" strokeWidth="1.8"
             strokeDasharray="6 3" strokeLinecap="round" />
-          {/* Measured FR */}
           <path d={measuredPath} fill="none" stroke="var(--ace-accent)" strokeWidth="2.5"
             strokeLinecap="round" strokeLinejoin="round" />
-          {/* Fill under measured */}
           <path d={measuredPath + `L${xOf(20000)},${PAD.top + plotH} L${xOf(20)},${PAD.top + plotH} Z`}
             fill="var(--ace-accent)" opacity="0.06" />
+          {targetCurve === 'custom' && editableAnchors.map((a, idx) => (
+            <circle
+              key={`${a.frequencyHz}-${idx}`}
+              cx={xOf(a.frequencyHz)}
+              cy={yOfSpl(a.splDb)}
+              r={5}
+              fill="rgba(80,220,255,0.95)"
+              stroke="#00131a"
+              strokeWidth={1}
+              style={{ cursor: 'grab' }}
+              onMouseDown={() => setDragIdx(idx)}
+            />
+          ))}
         </>
       )}
 
-      {/* Legend */}
       {!showCorrection && (
         <g transform={`translate(${PAD.left + 12}, ${PAD.top + 12})`}>
           <line x1="0" y1="0" x2="18" y2="0" stroke="var(--ace-accent)" strokeWidth="2.5" />
           <text x="24" y="3" fill="var(--ace-text-secondary)" fontSize="10">Measured</text>
-          <line x1="0" y1="16" x2="18" y2="16" stroke="rgba(76,175,130,0.6)" strokeWidth="1.5" strokeDasharray="6 3" />
+          <line x1="0" y1="16" x2="18" y2="16" stroke="rgba(76,175,130,0.75)" strokeWidth="1.8" strokeDasharray="6 3" />
           <text x="24" y="19" fill="var(--ace-text-secondary)" fontSize="10">Target</text>
+          {targetCurve === 'custom' && (
+            <text x="0" y="34" fill="rgba(80,220,255,0.9)" fontSize="9">Drag cyan points to draw custom target</text>
+          )}
         </g>
       )}
     </svg>
@@ -245,8 +284,19 @@ function GearListItem({ gear, selected, onClick }: {
 
 // ── EQ Band Table ─────────────────────────────────────────────────────────────
 
-function EqCorrectionTable({ gear, targetCurve }: { gear: GearProfile; targetCurve: TargetCurve }) {
-  const targetFR = useMemo(() => generateTargetFR(targetCurve, gear.frFrequencies), [targetCurve, gear.frFrequencies])
+function EqCorrectionTable({
+  gear,
+  targetCurve,
+  customAnchors,
+}: {
+  gear: GearProfile
+  targetCurve: TargetCurve
+  customAnchors: TargetAnchor[]
+}) {
+  const targetFR = useMemo(
+    () => getTargetCurvePoints(targetCurve, gear.frFrequencies, customAnchors),
+    [targetCurve, gear.frFrequencies, customAnchors],
+  )
 
   // Pick ~10 bands for PEQ correction display
   const bands = useMemo(() => {
@@ -300,6 +350,7 @@ export function GearView() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<GearProfile['type'] | 'all'>('all')
   const [targetCurve, setTargetCurve] = useState<TargetCurve>('harman2019')
+  const [customAnchors, setCustomAnchors] = useState<TargetAnchor[]>(DEFAULT_CUSTOM_TARGET)
   const [showCorrection, setShowCorrection] = useState(false)
   const [showEqTable, setShowEqTable] = useState(true)
   const [importIssues, setImportIssues] = useState<string[]>([])
@@ -379,6 +430,17 @@ export function GearView() {
             <option key={tc.value} value={tc.value}>{tc.label}</option>
           ))}
         </select>
+
+        {targetCurve === 'custom' && (
+          <button
+            onClick={() => setCustomAnchors(DEFAULT_CUSTOM_TARGET)}
+            className="flex items-center gap-1 px-2 py-1 rounded text-[10px] border hover:bg-white/5 transition-colors"
+            style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-secondary)' }}
+            title="Reset custom target curve"
+          >
+            <RotateCcw size={11} /> Reset Curve
+          </button>
+        )}
 
         <div className="w-px h-5 mx-1" style={{ background: 'var(--ace-border)' }} />
 
@@ -545,8 +607,17 @@ export function GearView() {
                     {importIssues.join(' | ')}
                   </div>
                 )}
+                <div className="text-[10px] px-2" style={{ color: 'var(--ace-text-muted)' }}>
+                  {TARGET_CURVES.find((t) => t.value === targetCurve)?.desc}
+                </div>
                 <div className="flex-1">
-                  <FRChart gear={selected} targetCurve={targetCurve} showCorrection={showCorrection} />
+                  <FRChart
+                    gear={selected}
+                    targetCurve={targetCurve}
+                    showCorrection={showCorrection}
+                    customAnchors={customAnchors}
+                    onChangeCustomAnchors={setCustomAnchors}
+                  />
                 </div>
               </div>
             ) : (
@@ -573,7 +644,7 @@ export function GearView() {
               </button>
               {showEqTable && (
                 <div className="px-4 pb-3">
-                  <EqCorrectionTable gear={selected} targetCurve={targetCurve} />
+                  <EqCorrectionTable gear={selected} targetCurve={targetCurve} customAnchors={customAnchors} />
                   <p className="text-[10px] mt-2" style={{ color: 'var(--ace-text-muted)' }}>
                     Generated PEQ bands to match selected target curve. Click "Apply to PEQ" to load into the Equalizer.
                   </p>

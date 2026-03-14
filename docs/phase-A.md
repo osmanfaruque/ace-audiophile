@@ -269,10 +269,10 @@
 
 ### A8.2 Target Curve Library (built-in data)
 
-- [ ] **A8.2.1** Harman 2018 In-Ear
-- [ ] **A8.2.2** Harman 2019 Over-Ear
-- [ ] **A8.2.3** Diffuse Field, Free Field
-- [ ] **A8.2.4** Custom drawable target curve in GearView SVG
+- [x] **A8.2.1** Harman 2018 In-Ear
+- [x] **A8.2.2** Harman 2019 Over-Ear
+- [x] **A8.2.3** Diffuse Field, Free Field
+- [x] **A8.2.4** Custom drawable target curve in GearView SVG
 
 ### A8.3 Correction Algorithm (C++)
 
