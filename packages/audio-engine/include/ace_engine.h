@@ -145,6 +145,28 @@ int ace_set_dsp(const AceDspState* state);
 int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q,
                     uint8_t enabled, uint8_t filter_type);
 
+/* ── Auto-EQ Correction Fitting (A8.3) ───────────────────────────────────── */
+
+/**
+ * Fit PEQ gains from measured and target FR curves.
+ *
+ * Inputs are frequency/SPL arrays in Hz and dB. Measured and target can have
+ * different frequency grids; target is log-interpolated internally.
+ *
+ * out_bands receives fitted PEQ bands (typically 60 entries).
+ * Returns 0 on success.
+ */
+int ace_fit_autoeq_bands(
+    const float* measured_freq_hz,
+    const float* measured_spl_db,
+    int measured_count,
+    const float* target_freq_hz,
+    const float* target_spl_db,
+    int target_count,
+    AceEqBand* out_bands,
+    int band_count
+);
+
 /* ── Crossfeed — Bauer BS2B (A1.3.3) ──────────────────────────────────────── */
 
 /** Enable / disable crossfeed and set strength. */

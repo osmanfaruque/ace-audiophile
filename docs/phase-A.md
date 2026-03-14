@@ -276,10 +276,10 @@
 
 ### A8.3 Correction Algorithm (C++)
 
-- [ ] **A8.3.1** Deviation = measured − target at each frequency point
-- [ ] **A8.3.2** Fit 60-band PEQ via least-squares optimization
-- [ ] **A8.3.3** ±12 dB per-band gain clamp
-- [ ] **A8.3.4** Smoothing pass — prevent narrow notches < 0.1 octave
+- [x] **A8.3.1** Deviation = measured − target at each frequency point
+- [x] **A8.3.2** Fit 60-band PEQ via least-squares optimization
+- [x] **A8.3.3** ±12 dB per-band gain clamp
+- [x] **A8.3.4** Smoothing pass — prevent narrow notches < 0.1 octave
 
 ### A8.4 Integration
 

@@ -347,6 +347,208 @@ int ace_set_eq_band(int band_index, float freq_hz, float gain_db, float q,
     return 0;
 }
 
+int ace_fit_autoeq_bands(
+    const float* measured_freq_hz,
+    const float* measured_spl_db,
+    int measured_count,
+    const float* target_freq_hz,
+    const float* target_spl_db,
+    int target_count,
+    AceEqBand* out_bands,
+    int band_count)
+{
+    if (!measured_freq_hz || !measured_spl_db || !target_freq_hz || !target_spl_db || !out_bands) {
+        return -1;
+    }
+    if (measured_count < 8 || target_count < 8 || band_count <= 0) {
+        return -2;
+    }
+
+    struct FrPoint {
+        double freq;
+        double spl;
+    };
+
+    std::vector<FrPoint> measured;
+    std::vector<FrPoint> target;
+    measured.reserve(static_cast<size_t>(measured_count));
+    target.reserve(static_cast<size_t>(target_count));
+
+    for (int i = 0; i < measured_count; ++i) {
+        const double f = static_cast<double>(measured_freq_hz[i]);
+        const double s = static_cast<double>(measured_spl_db[i]);
+        if (!std::isfinite(f) || !std::isfinite(s)) continue;
+        if (f < 20.0 || f > 20000.0) continue;
+        measured.push_back({f, s});
+    }
+
+    for (int i = 0; i < target_count; ++i) {
+        const double f = static_cast<double>(target_freq_hz[i]);
+        const double s = static_cast<double>(target_spl_db[i]);
+        if (!std::isfinite(f) || !std::isfinite(s)) continue;
+        if (f < 20.0 || f > 20000.0) continue;
+        target.push_back({f, s});
+    }
+
+    if (measured.size() < 8 || target.size() < 8) {
+        return -3;
+    }
+
+    std::sort(measured.begin(), measured.end(), [](const FrPoint& a, const FrPoint& b) { return a.freq < b.freq; });
+    std::sort(target.begin(), target.end(), [](const FrPoint& a, const FrPoint& b) { return a.freq < b.freq; });
+
+    auto interp_log = [](const std::vector<FrPoint>& data, double f) {
+        if (f <= data.front().freq) return data.front().spl;
+        if (f >= data.back().freq) return data.back().spl;
+        for (size_t i = 1; i < data.size(); ++i) {
+            if (f <= data[i].freq) {
+                const double f0 = data[i - 1].freq;
+                const double f1 = data[i].freq;
+                const double y0 = data[i - 1].spl;
+                const double y1 = data[i].spl;
+                const double t = (std::log10(f) - std::log10(f0)) /
+                                 std::max(1e-12, std::log10(f1) - std::log10(f0));
+                return y0 + (y1 - y0) * t;
+            }
+        }
+        return data.back().spl;
+    };
+
+    const double log_min = std::log10(20.0);
+    const double log_max = std::log10(20000.0);
+
+    std::vector<double> centers(static_cast<size_t>(band_count));
+    std::vector<double> gains(static_cast<size_t>(band_count), 0.0);
+    std::vector<double> rhs(static_cast<size_t>(band_count), 0.0);
+    std::vector<double> mat(static_cast<size_t>(band_count) * static_cast<size_t>(band_count), 0.0);
+
+    for (int i = 0; i < band_count; ++i) {
+        const double t = (band_count == 1) ? 0.0 : static_cast<double>(i) / static_cast<double>(band_count - 1);
+        centers[static_cast<size_t>(i)] = std::pow(10.0, log_min + (log_max - log_min) * t);
+    }
+
+    const double basis_sigma_oct = 0.28;
+    std::vector<double> basis(static_cast<size_t>(band_count));
+
+    for (const FrPoint& m : measured) {
+        const double target_spl = interp_log(target, m.freq);
+        const double deviation = m.spl - target_spl; // A8.3.1
+
+        for (int i = 0; i < band_count; ++i) {
+            const double oct = std::log2(m.freq / centers[static_cast<size_t>(i)]);
+            const double b = std::exp(-0.5 * (oct / basis_sigma_oct) * (oct / basis_sigma_oct));
+            basis[static_cast<size_t>(i)] = b;
+        }
+
+        for (int i = 0; i < band_count; ++i) {
+            const double bi = basis[static_cast<size_t>(i)];
+            rhs[static_cast<size_t>(i)] += -deviation * bi;
+            for (int j = 0; j < band_count; ++j) {
+                mat[static_cast<size_t>(i) * static_cast<size_t>(band_count) + static_cast<size_t>(j)] +=
+                    bi * basis[static_cast<size_t>(j)];
+            }
+        }
+    }
+
+    // Ridge regularization keeps the least-squares fit stable.
+    const double lambda = 0.25;
+    for (int i = 0; i < band_count; ++i) {
+        mat[static_cast<size_t>(i) * static_cast<size_t>(band_count) + static_cast<size_t>(i)] += lambda;
+    }
+
+    // Gaussian elimination with partial pivoting.
+    std::vector<double> aug(static_cast<size_t>(band_count) * static_cast<size_t>(band_count + 1), 0.0);
+    for (int i = 0; i < band_count; ++i) {
+        for (int j = 0; j < band_count; ++j) {
+            aug[static_cast<size_t>(i) * static_cast<size_t>(band_count + 1) + static_cast<size_t>(j)] =
+                mat[static_cast<size_t>(i) * static_cast<size_t>(band_count) + static_cast<size_t>(j)];
+        }
+        aug[static_cast<size_t>(i) * static_cast<size_t>(band_count + 1) + static_cast<size_t>(band_count)] = rhs[static_cast<size_t>(i)];
+    }
+
+    for (int col = 0; col < band_count; ++col) {
+        int pivot = col;
+        double pivot_abs = std::abs(aug[static_cast<size_t>(pivot) * static_cast<size_t>(band_count + 1) + static_cast<size_t>(col)]);
+        for (int r = col + 1; r < band_count; ++r) {
+            const double v = std::abs(aug[static_cast<size_t>(r) * static_cast<size_t>(band_count + 1) + static_cast<size_t>(col)]);
+            if (v > pivot_abs) {
+                pivot = r;
+                pivot_abs = v;
+            }
+        }
+
+        if (pivot_abs < 1e-12) {
+            continue;
+        }
+        if (pivot != col) {
+            for (int c = col; c <= band_count; ++c) {
+                std::swap(
+                    aug[static_cast<size_t>(col) * static_cast<size_t>(band_count + 1) + static_cast<size_t>(c)],
+                    aug[static_cast<size_t>(pivot) * static_cast<size_t>(band_count + 1) + static_cast<size_t>(c)]
+                );
+            }
+        }
+
+        const double diag = aug[static_cast<size_t>(col) * static_cast<size_t>(band_count + 1) + static_cast<size_t>(col)];
+        for (int c = col; c <= band_count; ++c) {
+            aug[static_cast<size_t>(col) * static_cast<size_t>(band_count + 1) + static_cast<size_t>(c)] /= diag;
+        }
+
+        for (int r = 0; r < band_count; ++r) {
+            if (r == col) continue;
+            const double factor = aug[static_cast<size_t>(r) * static_cast<size_t>(band_count + 1) + static_cast<size_t>(col)];
+            if (std::abs(factor) < 1e-16) continue;
+            for (int c = col; c <= band_count; ++c) {
+                aug[static_cast<size_t>(r) * static_cast<size_t>(band_count + 1) + static_cast<size_t>(c)] -=
+                    factor * aug[static_cast<size_t>(col) * static_cast<size_t>(band_count + 1) + static_cast<size_t>(c)];
+            }
+        }
+    }
+
+    for (int i = 0; i < band_count; ++i) {
+        gains[static_cast<size_t>(i)] =
+            aug[static_cast<size_t>(i) * static_cast<size_t>(band_count + 1) + static_cast<size_t>(band_count)];
+    }
+
+    // A8.3.3 — clamp each gain to ±12 dB.
+    for (int i = 0; i < band_count; ++i) {
+        gains[static_cast<size_t>(i)] = std::clamp(gains[static_cast<size_t>(i)], -12.0, 12.0);
+    }
+
+    // A8.3.4 — smoothing pass to avoid ultra-narrow notches/peaks.
+    const double oct_span = std::log2(20000.0 / 20.0);
+    const double step_oct = (band_count <= 1) ? 1.0 : oct_span / static_cast<double>(band_count - 1);
+    const double sigma_bands = std::max(1.0, 0.1 / std::max(1e-6, step_oct));
+    const int radius = static_cast<int>(std::ceil(2.5 * sigma_bands));
+    std::vector<double> smooth = gains;
+    for (int i = 0; i < band_count; ++i) {
+        double num = 0.0;
+        double den = 0.0;
+        for (int d = -radius; d <= radius; ++d) {
+            const int j = i + d;
+            if (j < 0 || j >= band_count) continue;
+            const double w = std::exp(-0.5 * (static_cast<double>(d) / sigma_bands) *
+                                      (static_cast<double>(d) / sigma_bands));
+            num += gains[static_cast<size_t>(j)] * w;
+            den += w;
+        }
+        smooth[static_cast<size_t>(i)] = (den > 0.0) ? (num / den) : gains[static_cast<size_t>(i)];
+    }
+
+    for (int i = 0; i < band_count; ++i) {
+        const float f = static_cast<float>(centers[static_cast<size_t>(i)]);
+        const float g = static_cast<float>(std::clamp(smooth[static_cast<size_t>(i)], -12.0, 12.0));
+
+        out_bands[i].freq_hz = f;
+        out_bands[i].gain_db = g;
+        out_bands[i].q = 2.4f;
+        out_bands[i].enabled = 1;
+        out_bands[i].filter_type = ACE_FILTER_PEAKING;
+    }
+
+    return 0;
+}
+
 // ── Crossfeed — Bauer BS2B (A1.3.3) ─────────────────────────────────────────
 
 void ace_set_crossfeed(uint8_t enabled, float strength)
