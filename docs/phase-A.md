@@ -201,10 +201,10 @@
 
 ### A6.4 UI (RadioView.tsx — replace stub)
 
-- [ ] **A6.4.1** StationGrid — virtualized 4-col card layout with station logo
-- [ ] **A6.4.2** NowPlayingBanner — ICY title + station metadata strip
-- [ ] **A6.4.3** Search + filter bar (genre / language / bitrate / country)
-- [ ] **A6.4.4** Sidebar tabs: Favorites | Recents | Browse by genre
+- [x] **A6.4.1** StationGrid — virtualized 4-col card layout with station logo
+- [x] **A6.4.2** NowPlayingBanner — ICY title + station metadata strip
+- [x] **A6.4.3** Search + filter bar (genre / language / bitrate / country)
+- [x] **A6.4.4** Sidebar tabs: Favorites | Recents | Browse by genre
 
 ### A6.5 System Integration
 
