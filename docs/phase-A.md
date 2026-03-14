@@ -208,7 +208,7 @@
 
 ### A6.5 System Integration
 
-- [ ] **A6.5.1** SMTC — station name + ICY title on Windows lock screen
+- [x] **A6.5.1** SMTC — station name + ICY title on Windows lock screen
 
 ---
 

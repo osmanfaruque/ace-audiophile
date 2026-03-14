@@ -3,6 +3,11 @@ import { persist } from 'zustand/middleware'
 import type { UiMode, ColorScheme, AppPreferences } from '@ace/types'
 import { getAudioEngine } from '@/lib/audioEngine'
 
+interface SmtcRadioMetadata {
+  stationName: string
+  icyTitle: string
+}
+
 interface AppState {
   uiMode: UiMode
   colorScheme: ColorScheme
@@ -35,6 +40,9 @@ interface AppState {
   scanProgress: { file: string; count: number } | null
   scanTotal: number | null
 
+  // A6.5.1 SMTC radio metadata override
+  smtcRadio: SmtcRadioMetadata | null
+
   // Actions
   setUiMode: (mode: UiMode) => void
   setColorScheme: (scheme: ColorScheme) => void
@@ -56,6 +64,8 @@ interface AppState {
   setIsScanning: (v: boolean) => void
   setScanProgress: (p: { file: string; count: number } | null) => void
   setScanTotal: (n: number | null) => void
+  setSmtcRadio: (payload: SmtcRadioMetadata | null) => void
+  clearSmtcRadio: () => void
   init: () => Promise<void>
 }
 
@@ -102,6 +112,7 @@ export const useAppStore = create<AppState>()(
       isScanning: false,
       scanProgress: null,
       scanTotal: null,
+      smtcRadio: null,
 
       setUiMode: (uiMode) => set({ uiMode }),
       setColorScheme: (colorScheme) => set({ colorScheme }),
@@ -123,6 +134,8 @@ export const useAppStore = create<AppState>()(
       setIsScanning: (isScanning) => set({ isScanning }),
       setScanProgress: (scanProgress) => set({ scanProgress }),
       setScanTotal: (scanTotal) => set({ scanTotal }),
+      setSmtcRadio: (smtcRadio) => set({ smtcRadio }),
+      clearSmtcRadio: () => set({ smtcRadio: null }),
 
       init: async () => {
         try {

@@ -112,24 +112,56 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
     // Sync metadata + playback state on store changes
     let prevTrackId: string | null = null
+    let prevSmtcSig = ''
     let prevStatus = ''
     const unsub = usePlaybackStore.subscribe((s) => {
       const { currentTrack: track, status } = s
-      if (track && track.id !== prevTrackId) {
+      const smtcRadio = useAppStore.getState().smtcRadio
+
+      if (smtcRadio) {
+        const sig = `${smtcRadio.stationName}::${smtcRadio.icyTitle}`
+        if (sig !== prevSmtcSig) {
+          ms.metadata = new MediaMetadata({
+            title: smtcRadio.icyTitle || smtcRadio.stationName,
+            artist: smtcRadio.stationName,
+            album: 'Internet Radio',
+          })
+          prevSmtcSig = sig
+        }
+      } else if (track && track.id !== prevTrackId) {
         ms.metadata = new MediaMetadata({
           title: track.title,
           artist: track.artist,
           album: track.album,
         })
         prevTrackId = track.id
+        prevSmtcSig = ''
       }
+
       if (status !== prevStatus) {
         ms.playbackState = status === 'playing' ? 'playing' : status === 'paused' ? 'paused' : 'none'
         prevStatus = status
       }
     })
 
-    return unsub
+    // React to radio SMTC metadata updates even when playback track object does not change.
+    const unsubApp = useAppStore.subscribe((state) => {
+      const smtcRadio = state.smtcRadio
+      if (!smtcRadio) return
+      const sig = `${smtcRadio.stationName}::${smtcRadio.icyTitle}`
+      if (sig === prevSmtcSig) return
+      ms.metadata = new MediaMetadata({
+        title: smtcRadio.icyTitle || smtcRadio.stationName,
+        artist: smtcRadio.stationName,
+        album: 'Internet Radio',
+      })
+      prevSmtcSig = sig
+    })
+
+    return () => {
+      unsub()
+      unsubApp()
+    }
   }, [])
 
   return <>{children}</>

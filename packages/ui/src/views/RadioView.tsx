@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Globe2, Heart, ListFilter, Loader2, Play, RadioTower, RotateCcw, Search, Signal, Star } from 'lucide-react'
 import { getAudioEngine, type RadioFacet, type RadioStation } from '@/lib/audioEngine'
+import { useAppStore } from '@/store/appStore'
 
 type SidebarTab = 'favorites' | 'recents' | 'genres'
 
@@ -50,6 +51,8 @@ function getDisplayUrl(station: RadioStation): string {
 }
 
 export function RadioView() {
+  const setSmtcRadio = useAppStore((s) => s.setSmtcRadio)
+
   const [tab, setTab] = useState<SidebarTab>('favorites')
   const [query, setQuery] = useState('')
   const [genreQuery, setGenreQuery] = useState('')
@@ -195,7 +198,9 @@ export function RadioView() {
 
       setActiveStationUuid(station.stationuuid)
       setNowPlaying(station)
-      setIcyTitle(`Live: ${station.name}`)
+      const liveTitle = `Live: ${station.name}`
+      setIcyTitle(liveTitle)
+      setSmtcRadio({ stationName: station.name, icyTitle: liveTitle })
 
       const recents = await engine.loadRecentRadioStations(50)
       setRecentStations(recents)
@@ -203,6 +208,11 @@ export function RadioView() {
       setError(e instanceof Error ? e.message : 'Failed to start station')
     }
   }
+
+  useEffect(() => {
+    if (!nowPlaying) return
+    setSmtcRadio({ stationName: nowPlaying.name, icyTitle })
+  }, [icyTitle, nowPlaying, setSmtcRadio])
 
   const toggleFavorite = async (station: RadioStation) => {
     const next = !favoriteSet.has(station.stationuuid)
