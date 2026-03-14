@@ -27,14 +27,17 @@
 #include <atomic>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 // ── Globals ──────────────────────────────────────────────────────────────────
 
@@ -836,6 +839,79 @@ int ace_analyze_file(
     void (*progress_cb)(float, void*),
     void* userdata)
 {
+    struct Biquad {
+        double b0 = 1.0;
+        double b1 = 0.0;
+        double b2 = 0.0;
+        double a1 = 0.0;
+        double a2 = 0.0;
+        double z1 = 0.0;
+        double z2 = 0.0;
+
+        float process(float x)
+        {
+            const double y = b0 * static_cast<double>(x) + z1;
+            z1 = b1 * static_cast<double>(x) - a1 * y + z2;
+            z2 = b2 * static_cast<double>(x) - a2 * y;
+            return static_cast<float>(y);
+        }
+    };
+
+    auto make_high_pass = [](double fs, double f0, double q) {
+        Biquad biq;
+        const double w0 = 2.0 * 3.14159265358979323846 * f0 / fs;
+        const double cw = std::cos(w0);
+        const double sw = std::sin(w0);
+        const double alpha = sw / (2.0 * q);
+
+        const double b0 = (1.0 + cw) / 2.0;
+        const double b1 = -(1.0 + cw);
+        const double b2 = (1.0 + cw) / 2.0;
+        const double a0 = 1.0 + alpha;
+        const double a1 = -2.0 * cw;
+        const double a2 = 1.0 - alpha;
+
+        biq.b0 = b0 / a0;
+        biq.b1 = b1 / a0;
+        biq.b2 = b2 / a0;
+        biq.a1 = a1 / a0;
+        biq.a2 = a2 / a0;
+        return biq;
+    };
+
+    auto make_high_shelf = [](double fs, double f0, double gain_db) {
+        Biquad biq;
+        const double a = std::pow(10.0, gain_db / 40.0);
+        const double w0 = 2.0 * 3.14159265358979323846 * f0 / fs;
+        const double cw = std::cos(w0);
+        const double sw = std::sin(w0);
+        const double s = 1.0;
+        const double alpha = sw / 2.0 * std::sqrt((a + 1.0 / a) * (1.0 / s - 1.0) + 2.0);
+        const double beta = 2.0 * std::sqrt(a) * alpha;
+
+        const double b0 =    a * ((a + 1.0) + (a - 1.0) * cw + beta);
+        const double b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cw);
+        const double b2 =    a * ((a + 1.0) + (a - 1.0) * cw - beta);
+        const double a0 =         (a + 1.0) - (a - 1.0) * cw + beta;
+        const double a1 =  2.0 * ((a - 1.0) - (a + 1.0) * cw);
+        const double a2 =         (a + 1.0) - (a - 1.0) * cw - beta;
+
+        biq.b0 = b0 / a0;
+        biq.b1 = b1 / a0;
+        biq.b2 = b2 / a0;
+        biq.a1 = a1 / a0;
+        biq.a2 = a2 / a0;
+        return biq;
+    };
+
+    auto bs1770_weight = [](int ch, int total_channels) {
+        if (total_channels >= 6 && ch == 3) {
+            // Typical 5.1 order keeps LFE at index 3; BS.1770 excludes it.
+            return 0.0;
+        }
+        return 1.0;
+    };
+
     if (!path || !out) return -1;
 
     ace::FFmpegDecoder analyzer;
@@ -854,8 +930,125 @@ int ace_analyze_file(
     out->is_lossy_transcoded = 0;
     out->effective_bit_depth = fmt.bit_depth;
 
+    if (fmt.sample_rate == 0 || fmt.channels == 0) {
+        if (progress_cb) progress_cb(1.0f, userdata);
+        return 0;
+    }
+
+    std::vector<Biquad> hp_filters(fmt.channels);
+    std::vector<Biquad> hs_filters(fmt.channels);
+    for (uint8_t ch = 0; ch < fmt.channels; ++ch) {
+        hp_filters[ch] = make_high_pass(static_cast<double>(fmt.sample_rate), 38.13547087602444, 0.5003270373238773);
+        hs_filters[ch] = make_high_shelf(static_cast<double>(fmt.sample_rate), 1681.974450955533, 4.0);
+    }
+
+    const size_t window_samples = static_cast<size_t>(std::max(1.0, std::round(static_cast<double>(fmt.sample_rate) * 0.400)));
+    const size_t step_samples = static_cast<size_t>(std::max(1.0, std::round(static_cast<double>(fmt.sample_rate) * 0.100)));
+    std::vector<double> window_ring(window_samples, 0.0);
+    size_t ring_pos = 0;
+    size_t ring_fill = 0;
+    double running_sum = 0.0;
+    uint64_t processed_samples = 0;
+
+    std::vector<double> bs1770_blocks;
+    double abs_peak = 0.0;
+    double rms_sum = 0.0;
+    uint64_t rms_count = 0;
+
     if (progress_cb) progress_cb(0.0f, userdata);
-    // TODO: full analysis passes (DR, LUFS, codec sniff) — A7.2
+
+    while (true) {
+        ace::DecodedBuffer buf = analyzer.decode_next_frame();
+        if (buf.frame_count == 0 || !buf.samples) {
+            break;
+        }
+
+        for (uint32_t i = 0; i < buf.frame_count; ++i) {
+            double weighted_power = 0.0;
+            for (uint8_t ch = 0; ch < fmt.channels; ++ch) {
+                const size_t idx = static_cast<size_t>(i) * fmt.channels + ch;
+                const float s = buf.samples[idx];
+                const double sd = static_cast<double>(s);
+                abs_peak = std::max(abs_peak, std::abs(sd));
+                rms_sum += sd * sd;
+                ++rms_count;
+
+                float y = hp_filters[ch].process(s);
+                y = hs_filters[ch].process(y);
+                const double w = bs1770_weight(static_cast<int>(ch), static_cast<int>(fmt.channels));
+                weighted_power += w * static_cast<double>(y) * static_cast<double>(y);
+            }
+
+            if (ring_fill < window_samples) {
+                window_ring[ring_fill++] = weighted_power;
+                running_sum += weighted_power;
+            } else {
+                running_sum += weighted_power - window_ring[ring_pos];
+                window_ring[ring_pos] = weighted_power;
+                ring_pos = (ring_pos + 1) % window_samples;
+            }
+
+            ++processed_samples;
+            if (ring_fill == window_samples) {
+                const uint64_t window_start = processed_samples - window_samples;
+                if ((window_start % step_samples) == 0) {
+                    bs1770_blocks.push_back(running_sum / static_cast<double>(window_samples));
+                }
+            }
+        }
+
+        if (progress_cb && fmt.duration_ms > 0) {
+            const double ms = static_cast<double>(processed_samples) * 1000.0 / static_cast<double>(fmt.sample_rate);
+            const float p = static_cast<float>(std::clamp(ms / static_cast<double>(fmt.duration_ms), 0.0, 0.98));
+            progress_cb(p, userdata);
+        }
+    }
+
+    // A7.2.1 — BS.1770/EBU R128 integrated LUFS with absolute+relative gating.
+    if (!bs1770_blocks.empty()) {
+        std::vector<double> abs_gated;
+        abs_gated.reserve(bs1770_blocks.size());
+        for (double z : bs1770_blocks) {
+            if (z <= 0.0) continue;
+            const double lkfs = -0.691 + 10.0 * std::log10(z);
+            if (lkfs >= -70.0) {
+                abs_gated.push_back(z);
+            }
+        }
+
+        if (!abs_gated.empty()) {
+            double mean_abs = 0.0;
+            for (double z : abs_gated) mean_abs += z;
+            mean_abs /= static_cast<double>(abs_gated.size());
+
+            const double l_abs = -0.691 + 10.0 * std::log10(std::max(mean_abs, std::numeric_limits<double>::min()));
+            const double rel_gate = l_abs - 10.0;
+
+            double mean_rel = 0.0;
+            size_t rel_count = 0;
+            for (double z : abs_gated) {
+                const double lkfs = -0.691 + 10.0 * std::log10(z);
+                if (lkfs >= rel_gate) {
+                    mean_rel += z;
+                    ++rel_count;
+                }
+            }
+
+            if (rel_count > 0) {
+                mean_rel /= static_cast<double>(rel_count);
+                out->lufs_integrated = static_cast<float>(
+                    -0.691 + 10.0 * std::log10(std::max(mean_rel, std::numeric_limits<double>::min())));
+            }
+        }
+    }
+
+    // A7.2.1 — DR proxy score from crest factor (peak / RMS) across the full file.
+    if (rms_count > 0) {
+        const double rms = std::sqrt(rms_sum / static_cast<double>(rms_count));
+        const double dr = 20.0 * std::log10(std::max(abs_peak, 1e-12) / std::max(rms, 1e-12));
+        out->dynamic_range_db = static_cast<float>(std::max(0.0, dr));
+    }
+
     if (progress_cb) progress_cb(1.0f, userdata);
 
     return 0;

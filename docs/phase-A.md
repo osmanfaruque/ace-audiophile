@@ -222,7 +222,7 @@
 
 ### A7.2 Analysis Functions (`ace_analyze_file`)
 
-- [ ] **A7.2.1** EBU R128 LUFS (ITU-R BS.1770) + DR score
+- [x] **A7.2.1** EBU R128 LUFS (ITU-R BS.1770) + DR score
 - [ ] **A7.2.2** True peak detection (4× oversampled)
 - [ ] **A7.2.3** Fake hi-res detector
   - [ ] **A7.2.3.1** Bit-depth histogram analysis (effective vs stated)
