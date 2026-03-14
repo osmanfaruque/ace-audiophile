@@ -9,6 +9,7 @@ mod error;
 mod watcher;
 mod autotag;
 mod db;
+mod radio_browser;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -70,6 +71,10 @@ pub fn run() {
             commands::ace_log_listening_event,
             commands::ace_get_recap_stats,
             commands::ace_get_album_art_path,
+            commands::ace_radio_search_stations,
+            commands::ace_radio_get_tags,
+            commands::ace_radio_get_countries,
+            commands::ace_radio_report_click,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Audiophile Ace");

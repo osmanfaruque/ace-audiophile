@@ -169,6 +169,34 @@ export interface LibrarySqlQuery {
   sortDir?: 'asc' | 'desc'
 }
 
+export interface RadioStationSearchQuery {
+  name?: string
+  genre?: string
+  country?: string
+  limit?: number
+}
+
+export interface RadioStation {
+  stationuuid: string
+  name: string
+  country: string
+  language: string
+  tags: string
+  bitrate: number
+  favicon: string
+  url: string
+  urlResolved: string
+  homepage: string
+  codec: string
+  votes: number
+  clickcount: number
+}
+
+export interface RadioFacet {
+  name: string
+  stationcount: number
+}
+
 // ─────────────────────────────────────────────────────────────
 //  Engine Interface
 // ─────────────────────────────────────────────────────────────
@@ -222,6 +250,12 @@ export interface IAudioEngine {
   logListeningEvent(trackId: string, startedAt: number, endedAt: number | null, completed: boolean): Promise<void>
   getRecapStats(year: number): Promise<unknown>
   getAlbumArtPath(trackId: string): Promise<string | null>
+
+  // Radio Browser API (A6.2)
+  searchRadioStations(query: RadioStationSearchQuery): Promise<RadioStation[]>
+  getRadioTags(): Promise<RadioFacet[]>
+  getRadioCountries(): Promise<RadioFacet[]>
+  reportRadioStationClick(stationuuid: string): Promise<void>
 
   // Scanning (A3.1.5)
   scanFolder(path: string, onProgress?: (file: string, count: number) => void): Promise<number>
@@ -498,6 +532,59 @@ class TauriAudioEngine implements IAudioEngine {
 
   async getAlbumArtPath(trackId: string): Promise<string | null> {
     return invoke<string | null>('ace_get_album_art_path', { trackId })
+  }
+
+  async searchRadioStations(query: RadioStationSearchQuery): Promise<RadioStation[]> {
+    const rows = await invoke<Array<{
+      stationuuid: string
+      name: string
+      country: string
+      language: string
+      tags: string
+      bitrate: number
+      favicon: string
+      url: string
+      url_resolved: string
+      homepage: string
+      codec: string
+      votes: number
+      clickcount: number
+    }>>('ace_radio_search_stations', {
+      query: {
+        name: query.name,
+        genre: query.genre,
+        country: query.country,
+        limit: query.limit,
+      },
+    })
+
+    return rows.map((r) => ({
+      stationuuid: r.stationuuid,
+      name: r.name,
+      country: r.country,
+      language: r.language,
+      tags: r.tags,
+      bitrate: r.bitrate,
+      favicon: r.favicon,
+      url: r.url,
+      urlResolved: r.url_resolved,
+      homepage: r.homepage,
+      codec: r.codec,
+      votes: r.votes,
+      clickcount: r.clickcount,
+    }))
+  }
+
+  async getRadioTags(): Promise<RadioFacet[]> {
+    return invoke<RadioFacet[]>('ace_radio_get_tags')
+  }
+
+  async getRadioCountries(): Promise<RadioFacet[]> {
+    return invoke<RadioFacet[]>('ace_radio_get_countries')
+  }
+
+  async reportRadioStationClick(stationuuid: string): Promise<void> {
+    await invoke('ace_radio_report_click', { stationuuid })
   }
 
   // ── A3.1.5 — Folder scanning ──────────────────────────

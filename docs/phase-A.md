@@ -191,9 +191,9 @@
 
 ### A6.2 Radio Browser API (`api.radio-browser.info`)
 
-- [ ] **A6.2.1** `/json/stations/search` — query by name, genre, country
-- [ ] **A6.2.2** `/json/tags` + `/json/countries` — filter data
-- [ ] **A6.2.3** Click-count reporting via `/json/url/{stationuuid}`
+- [x] **A6.2.1** `/json/stations/search` — query by name, genre, country
+- [x] **A6.2.2** `/json/tags` + `/json/countries` — filter data
+- [x] **A6.2.3** Click-count reporting via `/json/url/{stationuuid}`
 
 ### A6.3 Persistence
 
