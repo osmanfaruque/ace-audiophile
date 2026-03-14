@@ -27,6 +27,18 @@ pub fn migrations() -> Vec<Migration> {
             kind: MigrationKind::Down,
             sql: include_str!("../migrations/0001_a5_schema_down.sql"),
         },
+        Migration {
+            version: 2,
+            description: "a6_3_radio_persistence_up",
+            kind: MigrationKind::Up,
+            sql: include_str!("../migrations/0002_a6_radio_persistence_up.sql"),
+        },
+        Migration {
+            version: 2,
+            description: "a6_3_radio_persistence_down",
+            kind: MigrationKind::Down,
+            sql: include_str!("../migrations/0002_a6_radio_persistence_down.sql"),
+        },
     ]
 }
 
@@ -181,6 +193,26 @@ pub struct PlaylistPayload {
 pub struct RatingPayload {
     pub track_id: String,
     pub stars: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RadioStationRecord {
+    pub stationuuid: String,
+    pub name: String,
+    pub country: String,
+    pub language: String,
+    pub tags: String,
+    pub bitrate: i64,
+    pub favicon: String,
+    pub url: String,
+    pub url_resolved: String,
+    pub homepage: String,
+    pub codec: String,
+    pub votes: i64,
+    pub clickcount: i64,
+    pub is_favorite: bool,
+    pub last_played_at: Option<i64>,
+    pub last_clicked_at: Option<i64>,
 }
 
 pub fn scan_and_index_folder(app: &AppHandle, folder_path: &str) -> Result<u32, Box<dyn std::error::Error + Send + Sync>> {
@@ -528,6 +560,204 @@ pub fn get_ratings(app: &AppHandle) -> Result<Vec<RatingPayload>, Box<dyn std::e
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(out)
+}
+
+pub fn upsert_radio_stations(
+    app: &AppHandle,
+    stations: &[RadioStationRecord],
+) -> Result<u32, Box<dyn std::error::Error + Send + Sync>> {
+    if stations.is_empty() {
+        return Ok(0);
+    }
+
+    let db_path = resolve_db_path(app)?;
+    let mut conn = Connection::open(db_path)?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    let tx = conn.transaction()?;
+    let now = chrono_like_now_ms();
+
+    let mut count = 0u32;
+    for s in stations {
+        tx.execute(
+            "INSERT INTO radio_stations(
+                stationuuid,name,country,language,tags,bitrate,favicon,url,url_resolved,homepage,
+                codec,votes,clickcount,is_favorite,last_played_at,last_clicked_at,last_seen_at,created_at,updated_at
+             ) VALUES(
+                ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,
+                ?11,?12,?13,COALESCE(?14,0),?15,?16,?17,?17,?17
+             )
+             ON CONFLICT(stationuuid) DO UPDATE SET
+                name=excluded.name,
+                country=excluded.country,
+                language=excluded.language,
+                tags=excluded.tags,
+                bitrate=excluded.bitrate,
+                favicon=excluded.favicon,
+                url=excluded.url,
+                url_resolved=excluded.url_resolved,
+                homepage=excluded.homepage,
+                codec=excluded.codec,
+                votes=excluded.votes,
+                clickcount=excluded.clickcount,
+                last_seen_at=excluded.last_seen_at,
+                updated_at=excluded.updated_at",
+            params![
+                s.stationuuid,
+                s.name,
+                s.country,
+                s.language,
+                s.tags,
+                s.bitrate,
+                s.favicon,
+                s.url,
+                s.url_resolved,
+                s.homepage,
+                s.codec,
+                s.votes,
+                s.clickcount,
+                if s.is_favorite { 1 } else { 0 },
+                s.last_played_at,
+                s.last_clicked_at,
+                now,
+            ],
+        )?;
+        count += 1;
+    }
+
+    tx.commit()?;
+    Ok(count)
+}
+
+pub fn set_radio_station_favorite(
+    app: &AppHandle,
+    station: &RadioStationRecord,
+    is_favorite: bool,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    upsert_radio_stations(app, std::slice::from_ref(station))?;
+
+    let db_path = resolve_db_path(app)?;
+    let conn = Connection::open(db_path)?;
+    conn.execute(
+        "UPDATE radio_stations SET is_favorite=?2, updated_at=?3 WHERE stationuuid=?1",
+        params![
+            station.stationuuid,
+            if is_favorite { 1 } else { 0 },
+            chrono_like_now_ms(),
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn mark_radio_station_recent(
+    app: &AppHandle,
+    station: &RadioStationRecord,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    upsert_radio_stations(app, std::slice::from_ref(station))?;
+
+    let db_path = resolve_db_path(app)?;
+    let conn = Connection::open(db_path)?;
+    let now = chrono_like_now_ms();
+    conn.execute(
+        "UPDATE radio_stations SET last_played_at=?2, updated_at=?2 WHERE stationuuid=?1",
+        params![station.stationuuid, now],
+    )?;
+    Ok(())
+}
+
+pub fn mark_radio_station_clicked(
+    app: &AppHandle,
+    stationuuid: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let db_path = resolve_db_path(app)?;
+    let conn = Connection::open(db_path)?;
+    let now = chrono_like_now_ms();
+    conn.execute(
+        "UPDATE radio_stations SET last_clicked_at=?2, updated_at=?2 WHERE stationuuid=?1",
+        params![stationuuid, now],
+    )?;
+    Ok(())
+}
+
+pub fn load_favorite_radio_stations(
+    app: &AppHandle,
+) -> Result<Vec<RadioStationRecord>, Box<dyn std::error::Error + Send + Sync>> {
+    let db_path = resolve_db_path(app)?;
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(
+        "SELECT stationuuid,name,country,language,tags,bitrate,favicon,url,url_resolved,homepage,
+                codec,votes,clickcount,is_favorite,last_played_at,last_clicked_at
+         FROM radio_stations
+         WHERE is_favorite=1
+         ORDER BY updated_at DESC, name COLLATE NOCASE ASC",
+    )?;
+    map_radio_station_rows(&mut stmt)
+}
+
+pub fn load_recent_radio_stations(
+    app: &AppHandle,
+    limit: u32,
+) -> Result<Vec<RadioStationRecord>, Box<dyn std::error::Error + Send + Sync>> {
+    let db_path = resolve_db_path(app)?;
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(
+        "SELECT stationuuid,name,country,language,tags,bitrate,favicon,url,url_resolved,homepage,
+                codec,votes,clickcount,is_favorite,last_played_at,last_clicked_at
+         FROM radio_stations
+         WHERE last_played_at IS NOT NULL OR last_clicked_at IS NOT NULL
+         ORDER BY COALESCE(last_played_at, last_clicked_at, updated_at) DESC, updated_at DESC
+         LIMIT ?1",
+    )?;
+    let rows = stmt
+        .query_map([limit.max(1) as i64], |r| {
+            Ok(RadioStationRecord {
+                stationuuid: r.get(0)?,
+                name: r.get(1)?,
+                country: r.get(2)?,
+                language: r.get(3)?,
+                tags: r.get(4)?,
+                bitrate: r.get(5)?,
+                favicon: r.get(6)?,
+                url: r.get(7)?,
+                url_resolved: r.get(8)?,
+                homepage: r.get(9)?,
+                codec: r.get(10)?,
+                votes: r.get(11)?,
+                clickcount: r.get(12)?,
+                is_favorite: r.get::<_, i64>(13)? != 0,
+                last_played_at: r.get(14).ok(),
+                last_clicked_at: r.get(15).ok(),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+fn map_radio_station_rows(
+    stmt: &mut rusqlite::Statement<'_>,
+) -> Result<Vec<RadioStationRecord>, Box<dyn std::error::Error + Send + Sync>> {
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(RadioStationRecord {
+                stationuuid: r.get(0)?,
+                name: r.get(1)?,
+                country: r.get(2)?,
+                language: r.get(3)?,
+                tags: r.get(4)?,
+                bitrate: r.get(5)?,
+                favicon: r.get(6)?,
+                url: r.get(7)?,
+                url_resolved: r.get(8)?,
+                homepage: r.get(9)?,
+                codec: r.get(10)?,
+                votes: r.get(11)?,
+                clickcount: r.get(12)?,
+                is_favorite: r.get::<_, i64>(13)? != 0,
+                last_played_at: r.get(14).ok(),
+                last_clicked_at: r.get(15).ok(),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
 }
 
 pub fn log_listening_event(

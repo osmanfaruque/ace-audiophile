@@ -190,6 +190,9 @@ export interface RadioStation {
   codec: string
   votes: number
   clickcount: number
+  isFavorite: boolean
+  lastPlayedAt: number | null
+  lastClickedAt: number | null
 }
 
 export interface RadioFacet {
@@ -256,6 +259,11 @@ export interface IAudioEngine {
   getRadioTags(): Promise<RadioFacet[]>
   getRadioCountries(): Promise<RadioFacet[]>
   reportRadioStationClick(stationuuid: string): Promise<void>
+  cacheRadioStations(stations: RadioStation[]): Promise<number>
+  setFavoriteRadioStation(station: RadioStation, isFavorite: boolean): Promise<void>
+  markRecentRadioStation(station: RadioStation): Promise<void>
+  loadFavoriteRadioStations(): Promise<RadioStation[]>
+  loadRecentRadioStations(limit?: number): Promise<RadioStation[]>
 
   // Scanning (A3.1.5)
   scanFolder(path: string, onProgress?: (file: string, count: number) => void): Promise<number>
@@ -572,6 +580,9 @@ class TauriAudioEngine implements IAudioEngine {
       codec: r.codec,
       votes: r.votes,
       clickcount: r.clickcount,
+      isFavorite: false,
+      lastPlayedAt: null,
+      lastClickedAt: null,
     }))
   }
 
@@ -585,6 +596,156 @@ class TauriAudioEngine implements IAudioEngine {
 
   async reportRadioStationClick(stationuuid: string): Promise<void> {
     await invoke('ace_radio_report_click', { stationuuid })
+  }
+
+  async cacheRadioStations(stations: RadioStation[]): Promise<number> {
+    return invoke<number>('ace_radio_cache_stations', {
+      stations: stations.map((s) => ({
+        stationuuid: s.stationuuid,
+        name: s.name,
+        country: s.country,
+        language: s.language,
+        tags: s.tags,
+        bitrate: s.bitrate,
+        favicon: s.favicon,
+        url: s.url,
+        url_resolved: s.urlResolved,
+        homepage: s.homepage,
+        codec: s.codec,
+        votes: s.votes,
+        clickcount: s.clickcount,
+        is_favorite: s.isFavorite,
+        last_played_at: s.lastPlayedAt,
+        last_clicked_at: s.lastClickedAt,
+      })),
+    })
+  }
+
+  async setFavoriteRadioStation(station: RadioStation, isFavorite: boolean): Promise<void> {
+    await invoke('ace_radio_set_favorite', {
+      station: {
+        stationuuid: station.stationuuid,
+        name: station.name,
+        country: station.country,
+        language: station.language,
+        tags: station.tags,
+        bitrate: station.bitrate,
+        favicon: station.favicon,
+        url: station.url,
+        url_resolved: station.urlResolved,
+        homepage: station.homepage,
+        codec: station.codec,
+        votes: station.votes,
+        clickcount: station.clickcount,
+        is_favorite: station.isFavorite,
+        last_played_at: station.lastPlayedAt,
+        last_clicked_at: station.lastClickedAt,
+      },
+      isFavorite,
+    })
+  }
+
+  async markRecentRadioStation(station: RadioStation): Promise<void> {
+    await invoke('ace_radio_mark_recent', {
+      station: {
+        stationuuid: station.stationuuid,
+        name: station.name,
+        country: station.country,
+        language: station.language,
+        tags: station.tags,
+        bitrate: station.bitrate,
+        favicon: station.favicon,
+        url: station.url,
+        url_resolved: station.urlResolved,
+        homepage: station.homepage,
+        codec: station.codec,
+        votes: station.votes,
+        clickcount: station.clickcount,
+        is_favorite: station.isFavorite,
+        last_played_at: station.lastPlayedAt,
+        last_clicked_at: station.lastClickedAt,
+      },
+    })
+  }
+
+  async loadFavoriteRadioStations(): Promise<RadioStation[]> {
+    const rows = await invoke<Array<{
+      stationuuid: string
+      name: string
+      country: string
+      language: string
+      tags: string
+      bitrate: number
+      favicon: string
+      url: string
+      url_resolved: string
+      homepage: string
+      codec: string
+      votes: number
+      clickcount: number
+      is_favorite: boolean
+      last_played_at: number | null
+      last_clicked_at: number | null
+    }>>('ace_radio_load_favorites')
+
+    return rows.map((r) => ({
+      stationuuid: r.stationuuid,
+      name: r.name,
+      country: r.country,
+      language: r.language,
+      tags: r.tags,
+      bitrate: r.bitrate,
+      favicon: r.favicon,
+      url: r.url,
+      urlResolved: r.url_resolved,
+      homepage: r.homepage,
+      codec: r.codec,
+      votes: r.votes,
+      clickcount: r.clickcount,
+      isFavorite: r.is_favorite,
+      lastPlayedAt: r.last_played_at ?? null,
+      lastClickedAt: r.last_clicked_at ?? null,
+    }))
+  }
+
+  async loadRecentRadioStations(limit = 30): Promise<RadioStation[]> {
+    const rows = await invoke<Array<{
+      stationuuid: string
+      name: string
+      country: string
+      language: string
+      tags: string
+      bitrate: number
+      favicon: string
+      url: string
+      url_resolved: string
+      homepage: string
+      codec: string
+      votes: number
+      clickcount: number
+      is_favorite: boolean
+      last_played_at: number | null
+      last_clicked_at: number | null
+    }>>('ace_radio_load_recents', { limit })
+
+    return rows.map((r) => ({
+      stationuuid: r.stationuuid,
+      name: r.name,
+      country: r.country,
+      language: r.language,
+      tags: r.tags,
+      bitrate: r.bitrate,
+      favicon: r.favicon,
+      url: r.url,
+      urlResolved: r.url_resolved,
+      homepage: r.homepage,
+      codec: r.codec,
+      votes: r.votes,
+      clickcount: r.clickcount,
+      isFavorite: r.is_favorite,
+      lastPlayedAt: r.last_played_at ?? null,
+      lastClickedAt: r.last_clicked_at ?? null,
+    }))
   }
 
   // ── A3.1.5 — Folder scanning ──────────────────────────

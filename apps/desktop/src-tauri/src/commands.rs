@@ -254,6 +254,9 @@ pub struct RadioStationPayload {
     pub codec: String,
     pub votes: i64,
     pub clickcount: i64,
+    pub is_favorite: bool,
+    pub last_played_at: Option<i64>,
+    pub last_clicked_at: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -268,6 +271,48 @@ pub struct RadioSearchQueryPayload {
     pub genre: Option<String>,
     pub country: Option<String>,
     pub limit: Option<u32>,
+}
+
+fn to_db_radio_station(payload: RadioStationPayload) -> crate::db::RadioStationRecord {
+    crate::db::RadioStationRecord {
+        stationuuid: payload.stationuuid,
+        name: payload.name,
+        country: payload.country,
+        language: payload.language,
+        tags: payload.tags,
+        bitrate: payload.bitrate,
+        favicon: payload.favicon,
+        url: payload.url,
+        url_resolved: payload.url_resolved,
+        homepage: payload.homepage,
+        codec: payload.codec,
+        votes: payload.votes,
+        clickcount: payload.clickcount,
+        is_favorite: payload.is_favorite,
+        last_played_at: payload.last_played_at,
+        last_clicked_at: payload.last_clicked_at,
+    }
+}
+
+fn from_db_radio_station(row: crate::db::RadioStationRecord) -> RadioStationPayload {
+    RadioStationPayload {
+        stationuuid: row.stationuuid,
+        name: row.name,
+        country: row.country,
+        language: row.language,
+        tags: row.tags,
+        bitrate: row.bitrate,
+        favicon: row.favicon,
+        url: row.url,
+        url_resolved: row.url_resolved,
+        homepage: row.homepage,
+        codec: row.codec,
+        votes: row.votes,
+        clickcount: row.clickcount,
+        is_favorite: row.is_favorite,
+        last_played_at: row.last_played_at,
+        last_clicked_at: row.last_clicked_at,
+    }
 }
 
 // ── Commands ─────────────────────────────────────────────────
@@ -603,7 +648,7 @@ pub async fn ace_get_album_art_path(app: AppHandle, track_id: String) -> Result<
 
 #[tauri::command]
 pub async fn ace_radio_search_stations(
-    _app: AppHandle,
+    app: AppHandle,
     query: RadioSearchQueryPayload,
 ) -> Result<Vec<RadioStationPayload>, AppError> {
     let rows = crate::radio_browser::search_stations(crate::radio_browser::StationSearchQuery {
@@ -614,6 +659,30 @@ pub async fn ace_radio_search_stations(
     })
     .await
     .map_err(|e| AppError::RadioBrowserFailed(e.to_string()))?;
+
+    let persisted: Vec<crate::db::RadioStationRecord> = rows
+        .iter()
+        .map(|s| crate::db::RadioStationRecord {
+            stationuuid: s.stationuuid.clone(),
+            name: s.name.clone(),
+            country: s.country.clone(),
+            language: s.language.clone(),
+            tags: s.tags.clone(),
+            bitrate: s.bitrate,
+            favicon: s.favicon.clone(),
+            url: s.url.clone(),
+            url_resolved: s.url_resolved.clone(),
+            homepage: s.homepage.clone(),
+            codec: s.codec.clone(),
+            votes: s.votes,
+            clickcount: s.clickcount,
+            is_favorite: false,
+            last_played_at: None,
+            last_clicked_at: None,
+        })
+        .collect();
+    crate::db::upsert_radio_stations(&app, &persisted)
+        .map_err(|e| AppError::DatabaseFailed(e.to_string()))?;
 
     Ok(rows
         .into_iter()
@@ -631,6 +700,9 @@ pub async fn ace_radio_search_stations(
             codec: s.codec,
             votes: s.votes,
             clickcount: s.clickcount,
+            is_favorite: false,
+            last_played_at: None,
+            last_clicked_at: None,
         })
         .collect())
 }
@@ -664,8 +736,49 @@ pub async fn ace_radio_get_countries(_app: AppHandle) -> Result<Vec<RadioFacetPa
 }
 
 #[tauri::command]
-pub async fn ace_radio_report_click(_app: AppHandle, stationuuid: String) -> Result<(), AppError> {
+pub async fn ace_radio_report_click(app: AppHandle, stationuuid: String) -> Result<(), AppError> {
     crate::radio_browser::report_station_click(&stationuuid)
         .await
-        .map_err(|e| AppError::RadioBrowserFailed(e.to_string()))
+        .map_err(|e| AppError::RadioBrowserFailed(e.to_string()))?;
+    crate::db::mark_radio_station_clicked(&app, &stationuuid)
+        .map_err(|e| AppError::DatabaseFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_radio_cache_stations(
+    app: AppHandle,
+    stations: Vec<RadioStationPayload>,
+) -> Result<u32, AppError> {
+    let rows: Vec<crate::db::RadioStationRecord> = stations.into_iter().map(to_db_radio_station).collect();
+    crate::db::upsert_radio_stations(&app, &rows).map_err(|e| AppError::DatabaseFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_radio_set_favorite(
+    app: AppHandle,
+    station: RadioStationPayload,
+    is_favorite: bool,
+) -> Result<(), AppError> {
+    let row = to_db_radio_station(station);
+    crate::db::set_radio_station_favorite(&app, &row, is_favorite)
+        .map_err(|e| AppError::DatabaseFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_radio_mark_recent(app: AppHandle, station: RadioStationPayload) -> Result<(), AppError> {
+    let row = to_db_radio_station(station);
+    crate::db::mark_radio_station_recent(&app, &row).map_err(|e| AppError::DatabaseFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_radio_load_favorites(app: AppHandle) -> Result<Vec<RadioStationPayload>, AppError> {
+    let rows = crate::db::load_favorite_radio_stations(&app).map_err(|e| AppError::DatabaseFailed(e.to_string()))?;
+    Ok(rows.into_iter().map(from_db_radio_station).collect())
+}
+
+#[tauri::command]
+pub async fn ace_radio_load_recents(app: AppHandle, limit: Option<u32>) -> Result<Vec<RadioStationPayload>, AppError> {
+    let rows = crate::db::load_recent_radio_stations(&app, limit.unwrap_or(30))
+        .map_err(|e| AppError::DatabaseFailed(e.to_string()))?;
+    Ok(rows.into_iter().map(from_db_radio_station).collect())
 }

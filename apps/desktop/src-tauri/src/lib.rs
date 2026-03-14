@@ -75,6 +75,11 @@ pub fn run() {
             commands::ace_radio_get_tags,
             commands::ace_radio_get_countries,
             commands::ace_radio_report_click,
+            commands::ace_radio_cache_stations,
+            commands::ace_radio_set_favorite,
+            commands::ace_radio_mark_recent,
+            commands::ace_radio_load_favorites,
+            commands::ace_radio_load_recents,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Audiophile Ace");

@@ -197,7 +197,7 @@
 
 ### A6.3 Persistence
 
-- [ ] **A6.3.1** `radio_stations` SQLite table (favorites + recents)
+- [x] **A6.3.1** `radio_stations` SQLite table (favorites + recents)
 
 ### A6.4 UI (RadioView.tsx — replace stub)
 
