@@ -20,7 +20,10 @@ use libloading::{Library, Symbol};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::commands::{AudioDeviceInfo, DspStatePayload, FileAnalysisResult, MetadataWritePayload, TrackInfo};
+use crate::commands::{
+    AudioDeviceInfo, DspStatePayload, FileAnalysisResult, MasteringComparisonPayload,
+    MetadataWritePayload, TrackInfo,
+};
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -207,6 +210,19 @@ struct CAceFileAnalysis {
     lufs_integrated: f32,
     is_lossy_transcoded: u8,
     effective_bit_depth: u8,
+}
+
+#[repr(C)]
+struct CAceMasteringComparison {
+    time_offset_ms: i32,
+    dr_a: f32,
+    dr_b: f32,
+    lufs_a: f32,
+    lufs_b: f32,
+    true_peak_a: f32,
+    true_peak_b: f32,
+    spectral_delta_count: u32,
+    spectral_delta_db: [f32; 128],
 }
 
 #[repr(C)]
@@ -603,6 +619,74 @@ pub async fn analyze_file(app: &AppHandle, file_path: &str) -> Result<FileAnalys
 pub fn generate_spectrogram(_file_path: &str, _channel_index: u32) -> Result<Vec<f32>, BoxError> {
     // Will be wired when A7 analyzer is implemented
     Ok(vec![])
+}
+
+pub async fn compare_mastering(
+    app: &AppHandle,
+    file_a: &str,
+    file_b: &str,
+) -> Result<MasteringComparisonPayload, BoxError> {
+    app.emit("ace://analysis-progress", 0u8).ok();
+
+    let c_a = CString::new(file_a)?;
+    let c_b = CString::new(file_b)?;
+    let mut out = CAceMasteringComparison {
+        time_offset_ms: 0,
+        dr_a: 0.0,
+        dr_b: 0.0,
+        lufs_a: 0.0,
+        lufs_b: 0.0,
+        true_peak_a: 0.0,
+        true_peak_b: 0.0,
+        spectral_delta_count: 0,
+        spectral_delta_db: [0.0; 128],
+    };
+
+    let rc = unsafe {
+        let ace_compare_mastering: Symbol<
+            unsafe extern "C" fn(
+                *const i8,
+                *const i8,
+                *mut CAceMasteringComparison,
+                Option<unsafe extern "C" fn(f32, *mut std::ffi::c_void)>,
+                *mut std::ffi::c_void,
+            ) -> i32,
+        > = sym(b"ace_compare_mastering\0")?;
+        ace_compare_mastering(
+            c_a.as_ptr(),
+            c_b.as_ptr(),
+            &mut out,
+            None,
+            std::ptr::null_mut(),
+        )
+    };
+
+    if rc != 0 {
+        return Err(format!(
+            "ace_compare_mastering failed for '{}' vs '{}' (code {rc})",
+            file_a, file_b
+        )
+        .into());
+    }
+
+    app.emit("ace://analysis-progress", 100u8).ok();
+
+    let count = (out.spectral_delta_count as usize).min(out.spectral_delta_db.len());
+    let mut spectral_delta_db = Vec::with_capacity(count);
+    for i in 0..count {
+        spectral_delta_db.push(out.spectral_delta_db[i] as f64);
+    }
+
+    Ok(MasteringComparisonPayload {
+        time_offset_ms: out.time_offset_ms,
+        dr_a: out.dr_a as f64,
+        dr_b: out.dr_b as f64,
+        lufs_a: out.lufs_a as f64,
+        lufs_b: out.lufs_b as f64,
+        true_peak_a: out.true_peak_a as f64,
+        true_peak_b: out.true_peak_b as f64,
+        spectral_delta_db,
+    })
 }
 
 pub fn write_metadata(payload: MetadataWritePayload) -> Result<(), BoxError> {

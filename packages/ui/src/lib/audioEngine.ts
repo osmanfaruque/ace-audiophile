@@ -11,7 +11,15 @@
  * The singleton pattern ensures one engine instance per app session.
  */
 
-import type { DspChainState, AudioDevice, FftFrame, LevelMeter, AudioTrack, FileAnalysisResult } from '@ace/types'
+import type {
+  DspChainState,
+  AudioDevice,
+  FftFrame,
+  LevelMeter,
+  AudioTrack,
+  FileAnalysisResult,
+  MasteringComparisonResult,
+} from '@ace/types'
 
 // Dynamically imported to avoid build errors in non-Tauri environments
 let tauriInvoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null
@@ -228,6 +236,7 @@ export interface IAudioEngine {
 
   // Analysis (A3.1.4)
   analyzeFile(filePath: string): Promise<FileAnalysisResult>
+  compareMastering(fileA: string, fileB: string): Promise<MasteringComparisonResult>
   generateSpectrogram(filePath: string, channelIndex: number): Promise<Float32Array>
 
   // Metadata (A4.3.1)
@@ -350,6 +359,30 @@ class TauriAudioEngine implements IAudioEngine {
 
   async analyzeFile(filePath: string): Promise<FileAnalysisResult> {
     return invoke<FileAnalysisResult>('ace_analyze_file', { filePath })
+  }
+
+  async compareMastering(fileA: string, fileB: string): Promise<MasteringComparisonResult> {
+    const raw = await invoke<{
+      time_offset_ms: number
+      dr_a: number
+      dr_b: number
+      lufs_a: number
+      lufs_b: number
+      true_peak_a: number
+      true_peak_b: number
+      spectral_delta_db: number[]
+    }>('ace_compare_mastering', { fileA, fileB })
+
+    return {
+      timeOffsetMs: raw.time_offset_ms,
+      drA: raw.dr_a,
+      drB: raw.dr_b,
+      lufsA: raw.lufs_a,
+      lufsB: raw.lufs_b,
+      truePeakA: raw.true_peak_a,
+      truePeakB: raw.true_peak_b,
+      spectralDeltaDb: raw.spectral_delta_db,
+    }
   }
 
   async generateSpectrogram(filePath: string, channelIndex: number): Promise<Float32Array> {

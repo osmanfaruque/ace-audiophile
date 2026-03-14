@@ -291,6 +291,17 @@ export interface MasteringComparison {
   verdict: string
 }
 
+export interface MasteringComparisonResult {
+  timeOffsetMs: number
+  drA: number
+  drB: number
+  lufsA: number
+  lufsB: number
+  truePeakA: number
+  truePeakB: number
+  spectralDeltaDb: number[]
+}
+
 // ── Metadata / Auto-tagger ────────────────────
 export interface TagSuggestion {
   source: 'acoustid' | 'musicbrainz' | 'manual'

@@ -52,6 +52,7 @@ pub fn run() {
             commands::ace_set_eq_band,
             commands::ace_analyze_file,
             commands::ace_generate_spectrogram,
+            commands::ace_compare_mastering,
             commands::ace_scan_folder,
             commands::ace_start_watcher,
             commands::ace_stop_watcher,

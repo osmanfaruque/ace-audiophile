@@ -292,6 +292,20 @@ typedef struct AceFileAnalysis {
     uint8_t  effective_bit_depth;  /**< fake high-res detection */
 } AceFileAnalysis;
 
+#define ACE_MASTERING_DELTA_BINS 128
+
+typedef struct AceMasteringComparison {
+    int32_t  time_offset_ms;  /**< Positive => file_b starts later than file_a */
+    float    dr_a;
+    float    dr_b;
+    float    lufs_a;
+    float    lufs_b;
+    float    true_peak_a;
+    float    true_peak_b;
+    uint32_t spectral_delta_count;
+    float    spectral_delta_db[ACE_MASTERING_DELTA_BINS]; /**< LTAS delta (A-B) */
+} AceMasteringComparison;
+
 /**
  * Analyse a file.  Blocks until complete.  Returns 0 on success.
  * progress_cb is called with 0.0 – 1.0 on the calling thread.
@@ -299,6 +313,19 @@ typedef struct AceFileAnalysis {
 int ace_analyze_file(
     const char*   path,
     AceFileAnalysis* out,
+    void (*progress_cb)(float progress, void* userdata),
+    void* userdata
+);
+
+/**
+ * Compare two versions of a track for mastering differences (A7.4).
+ *
+ * Returns 0 on success.
+ */
+int ace_compare_mastering(
+    const char* path_a,
+    const char* path_b,
+    AceMasteringComparison* out,
     void (*progress_cb)(float progress, void* userdata),
     void* userdata
 );

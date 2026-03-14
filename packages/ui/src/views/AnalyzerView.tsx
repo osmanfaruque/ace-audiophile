@@ -9,7 +9,11 @@ import {
 import { usePlaybackStore } from '@/store/playbackStore'
 import { getAudioEngine } from '@/lib/audioEngine'
 import { cn, formatDuration, formatSampleRate } from '@/lib/utils'
-import type { AudioTrack, FileAnalysisResult as EngineAnalysisResult } from '@ace/types'
+import type {
+  AudioTrack,
+  FileAnalysisResult as EngineAnalysisResult,
+  MasteringComparisonResult,
+} from '@ace/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -48,6 +52,53 @@ async function openAudioFile(): Promise<string | null> {
     if (!result) return null
     return typeof result === 'string' ? result : result[0] ?? null
   } catch { return null }
+}
+
+function buildTrackFromPath(path: string): AudioTrack {
+  const fileName = path.split(/[\\/]/).pop() ?? path
+  const title = fileName.replace(/\.[^.]+$/, '')
+  const ext = (fileName.split('.').pop() ?? 'unknown').toLowerCase()
+  const validCodecs = ['flac','wav','aiff','alac','aac','mp3','ogg','opus','dsf','dff','wma','ape','wavpack','tta','mp4'] as const
+  type AC = typeof validCodecs[number]
+  const codec: AC = validCodecs.includes(ext as AC) ? (ext as AC) : 'flac'
+  const now = Date.now()
+  return {
+    id: `analyzer-${now}`,
+    filePath: path,
+    title,
+    artist: 'Unknown',
+    albumArtist: 'Unknown',
+    album: 'Unknown',
+    genre: '',
+    year: null,
+    trackNumber: null,
+    totalTracks: null,
+    discNumber: null,
+    totalDiscs: null,
+    comment: '',
+    durationMs: 0,
+    sampleRate: 44100,
+    bitDepth: 16,
+    channels: 2,
+    codec,
+    bitrateKbps: 0,
+    fileSizeBytes: 0,
+    effectiveBitDepth: null,
+    dynamicRange: null,
+    lufs: null,
+    truePeak: null,
+    isLossyTranscode: null,
+    lossyConfidence: null,
+    replayGainTrack: null,
+    replayGainAlbum: null,
+    musicBrainzId: null,
+    acoustId: null,
+    albumId: `alb-${now}`,
+    dateAdded: now,
+    dateModified: now,
+    lastPlayed: null,
+    playCount: 0,
+  }
 }
 
 function mapVerdictLevel(verdict: string): VerdictLevel {
@@ -524,6 +575,36 @@ function OverallScore({ result }: { result: AnalysisResult }) {
   )
 }
 
+function SpectralDeltaHeat({ data }: { data: number[] }) {
+  if (!data.length) {
+    return (
+      <div className="text-xs" style={{ color: 'var(--ace-text-muted)' }}>
+        No spectral delta data.
+      </div>
+    )
+  }
+
+  const maxAbs = Math.max(1, ...data.map(v => Math.abs(v)))
+  return (
+    <div className="grid grid-cols-16 gap-1">
+      {data.map((v, i) => {
+        const t = Math.min(1, Math.abs(v) / maxAbs)
+        const color = v >= 0
+          ? `rgba(255, 90, 80, ${0.25 + t * 0.75})`
+          : `rgba(80, 170, 255, ${0.25 + t * 0.75})`
+        return (
+          <div
+            key={i}
+            className="h-3 rounded-sm"
+            title={`Bin ${i}: ${v.toFixed(2)} dB`}
+            style={{ background: color }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Main View ─────────────────────────────────────────────────────────────────
 
 export function AnalyzerView() {
@@ -531,6 +612,10 @@ export function AnalyzerView() {
   const [track, setTrack] = useState<AudioTrack | null>(currentTrack)
   const [status, setStatus] = useState<AnalysisStatus>('idle')
   const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [compareA, setCompareA] = useState<AudioTrack | null>(null)
+  const [compareB, setCompareB] = useState<AudioTrack | null>(null)
+  const [compareStatus, setCompareStatus] = useState<AnalysisStatus>('idle')
+  const [compareResult, setCompareResult] = useState<MasteringComparisonResult | null>(null)
   const [activeTab, setActiveTab] = useState<ActiveTab>('spectrogram')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
@@ -546,30 +631,20 @@ export function AnalyzerView() {
   const handleLoadFile = useCallback(async () => {
     const path = await openAudioFile()
     if (!path) return
-    const fileName = path.split(/[\\/]/).pop() ?? path
-    const title = fileName.replace(/\.[^.]+$/, '')
-    const ext = (fileName.split('.').pop() ?? 'unknown').toLowerCase()
-    const validCodecs = ['flac','wav','aiff','alac','aac','mp3','ogg','opus','dsf','dff','wma','ape','wavpack','tta','mp4'] as const
-    type AC = typeof validCodecs[number]
-    const codec: AC = validCodecs.includes(ext as AC) ? (ext as AC) : 'flac'
-    const now = Date.now()
-    const newTrack: AudioTrack = {
-      id: `analyzer-${now}`, filePath: path, title,
-      artist: 'Unknown', albumArtist: 'Unknown', album: 'Unknown',
-      genre: '', year: null, trackNumber: null, totalTracks: null,
-      discNumber: null, totalDiscs: null, comment: '',
-      durationMs: 0, sampleRate: 44100, bitDepth: 16, channels: 2, codec,
-      bitrateKbps: 0, fileSizeBytes: 0,
-      effectiveBitDepth: null, dynamicRange: null, lufs: null,
-      truePeak: null, isLossyTranscode: null, lossyConfidence: null,
-      replayGainTrack: null, replayGainAlbum: null,
-      musicBrainzId: null, acoustId: null,
-      albumId: `alb-${now}`,
-      dateAdded: now, dateModified: now, lastPlayed: null, playCount: 0,
-    }
+    const newTrack = buildTrackFromPath(path)
     setTrack(newTrack)
     setResult(null)
     setStatus('idle')
+  }, [])
+
+  const handleLoadCompare = useCallback(async (slot: 'a' | 'b') => {
+    const path = await openAudioFile()
+    if (!path) return
+    const t = buildTrackFromPath(path)
+    if (slot === 'a') setCompareA(t)
+    else setCompareB(t)
+    setCompareResult(null)
+    setCompareStatus('idle')
   }, [])
 
   const handleAnalyze = useCallback(async () => {
@@ -586,6 +661,20 @@ export function AnalyzerView() {
       setStatus('error')
     }
   }, [track])
+
+  const handleCompareMastering = useCallback(async () => {
+    if (!compareA || !compareB) return
+    setCompareStatus('analyzing')
+    setCompareResult(null)
+    try {
+      const res = await getAudioEngine().compareMastering(compareA.filePath, compareB.filePath)
+      setCompareResult(res)
+      setCompareStatus('done')
+    } catch (err) {
+      console.error('Mastering comparison failed', err)
+      setCompareStatus('error')
+    }
+  }, [compareA, compareB])
 
   const toggleExpanded = (id: string) => {
     setExpanded(prev => {
@@ -771,6 +860,67 @@ export function AnalyzerView() {
                 ? `${track.sampleRate ? formatSampleRate(track.sampleRate) : '?'} / ${track.bitDepth || '?'}-bit  ·  ${track.codec.toUpperCase()}`
                 : 'No file loaded'}
             </span>
+          </div>
+
+          <div className="border-t p-3" style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)' }}>
+            <div className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--ace-text-muted)' }}>
+              Mastering Comparison
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <button
+                onClick={() => handleLoadCompare('a')}
+                className="px-2 py-1.5 rounded border text-xs text-left"
+                style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-secondary)' }}
+              >
+                A: {compareA?.title ?? 'Load Version A'}
+              </button>
+              <button
+                onClick={() => handleLoadCompare('b')}
+                className="px-2 py-1.5 rounded border text-xs text-left"
+                style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-secondary)' }}
+              >
+                B: {compareB?.title ?? 'Load Version B'}
+              </button>
+            </div>
+            <button
+              onClick={handleCompareMastering}
+              disabled={!compareA || !compareB || compareStatus === 'analyzing'}
+              className={cn(
+                'px-3 py-1.5 rounded text-xs font-semibold border',
+                !compareA || !compareB || compareStatus === 'analyzing' ? 'opacity-40 cursor-not-allowed' : 'hover:opacity-90'
+              )}
+              style={{ background: 'var(--ace-accent)', borderColor: 'var(--ace-accent)', color: '#fff' }}
+            >
+              {compareStatus === 'analyzing' ? 'Comparing…' : 'Compare Mastering'}
+            </button>
+
+            {compareResult && (
+              <div className="mt-3 space-y-2 text-xs" style={{ color: 'var(--ace-text-secondary)' }}>
+                <div>Auto alignment offset: {compareResult.timeOffsetMs} ms</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div style={{ color: 'var(--ace-text-muted)' }}>Metric</div>
+                  <div>A</div>
+                  <div>B</div>
+                  <div style={{ color: 'var(--ace-text-muted)' }}>DR</div>
+                  <div>{compareResult.drA.toFixed(1)}</div>
+                  <div>{compareResult.drB.toFixed(1)}</div>
+                  <div style={{ color: 'var(--ace-text-muted)' }}>LUFS</div>
+                  <div>{compareResult.lufsA.toFixed(1)}</div>
+                  <div>{compareResult.lufsB.toFixed(1)}</div>
+                  <div style={{ color: 'var(--ace-text-muted)' }}>True Peak</div>
+                  <div>{compareResult.truePeakA.toFixed(2)} dBTP</div>
+                  <div>{compareResult.truePeakB.toFixed(2)} dBTP</div>
+                </div>
+                <div style={{ color: 'var(--ace-text-muted)' }}>Spectral delta (A-B)</div>
+                <SpectralDeltaHeat data={compareResult.spectralDeltaDb} />
+              </div>
+            )}
+
+            {compareStatus === 'error' && (
+              <div className="mt-2 text-xs" style={{ color: 'var(--ace-danger)' }}>
+                Mastering comparison failed.
+              </div>
+            )}
           </div>
         </div>
       </div>

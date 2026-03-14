@@ -252,9 +252,9 @@
 
 ### A7.4 Mastering Comparison
 
-- [ ] **A7.4.1** Load two versions of same track and auto-time-align (cross-correlation)
-- [ ] **A7.4.2** Side-by-side DR/LUFS/True Peak comparison
-- [ ] **A7.4.3** Spectral delta overlay (difference heat-map)
+- [x] **A7.4.1** Load two versions of same track and auto-time-align (cross-correlation)
+- [x] **A7.4.2** Side-by-side DR/LUFS/True Peak comparison
+- [x] **A7.4.3** Spectral delta overlay (difference heat-map)
 
 ---
 

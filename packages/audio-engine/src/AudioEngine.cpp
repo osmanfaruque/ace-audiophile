@@ -1054,6 +1054,165 @@ int ace_analyze_file(
     return 0;
 }
 
+int ace_compare_mastering(
+    const char* path_a,
+    const char* path_b,
+    AceMasteringComparison* out,
+    void (*progress_cb)(float, void*),
+    void* userdata)
+{
+    if (!path_a || !path_b || !out) return -1;
+
+    auto decode_preview = [](const char* path,
+                             int target_rate,
+                             int seconds,
+                             std::vector<float>& mono,
+                             uint32_t& source_sr) -> int {
+        ace::FFmpegDecoder dec;
+        if (dec.open(path) != 0) return -1;
+
+        const auto& fmt = dec.format();
+        source_sr = fmt.sample_rate;
+        if (fmt.sample_rate == 0 || fmt.channels == 0) return -2;
+
+        const size_t target_samples = static_cast<size_t>(target_rate) * static_cast<size_t>(seconds);
+        mono.clear();
+        mono.reserve(target_samples);
+
+        const double ratio = static_cast<double>(fmt.sample_rate) / static_cast<double>(target_rate);
+        double phase = 0.0;
+        while (mono.size() < target_samples) {
+            ace::DecodedBuffer buf = dec.decode_next_frame();
+            if (!buf.samples || buf.frame_count == 0) break;
+
+            for (uint32_t i = 0; i < buf.frame_count && mono.size() < target_samples; ++i) {
+                double m = 0.0;
+                for (uint8_t ch = 0; ch < fmt.channels; ++ch) {
+                    m += buf.samples[static_cast<size_t>(i) * fmt.channels + ch];
+                }
+                m /= static_cast<double>(fmt.channels);
+                phase += 1.0;
+                if (phase >= ratio) {
+                    mono.push_back(static_cast<float>(m));
+                    phase -= ratio;
+                }
+            }
+        }
+        return mono.empty() ? -3 : 0;
+    };
+
+    auto best_lag = [](const std::vector<float>& a,
+                       const std::vector<float>& b,
+                       int max_lag_samples) -> int {
+        if (a.empty() || b.empty()) return 0;
+
+        const int n = static_cast<int>(std::min(a.size(), b.size()));
+        double best = -1e30;
+        int best_l = 0;
+
+        for (int lag = -max_lag_samples; lag <= max_lag_samples; ++lag) {
+            double num = 0.0;
+            double da = 0.0;
+            double db = 0.0;
+            int used = 0;
+            for (int i = 0; i < n; ++i) {
+                const int j = i + lag;
+                if (j < 0 || j >= n) continue;
+                const double va = a[static_cast<size_t>(i)];
+                const double vb = b[static_cast<size_t>(j)];
+                num += va * vb;
+                da += va * va;
+                db += vb * vb;
+                ++used;
+            }
+            if (used < n / 4) continue;
+            const double den = std::sqrt(std::max(da, 1e-18) * std::max(db, 1e-18));
+            const double corr = num / den;
+            if (corr > best) {
+                best = corr;
+                best_l = lag;
+            }
+        }
+        return best_l;
+    };
+
+    auto long_term_spectrum = [](const std::vector<float>& mono,
+                                 int bins,
+                                 std::vector<double>& out_bins) {
+        const int nfft = 256;
+        const int hop = 128;
+        out_bins.assign(static_cast<size_t>(bins), -120.0);
+        if (mono.size() < static_cast<size_t>(nfft)) return;
+
+        std::vector<double> acc(static_cast<size_t>(bins), 0.0);
+        int frames = 0;
+        for (size_t base = 0; base + static_cast<size_t>(nfft) <= mono.size(); base += static_cast<size_t>(hop)) {
+            for (int k = 0; k < bins; ++k) {
+                const int fft_bin = 1 + (k * (nfft / 2 - 1)) / std::max(1, bins - 1);
+                double re = 0.0;
+                double im = 0.0;
+                for (int n = 0; n < nfft; ++n) {
+                    const double w = 0.5 - 0.5 * std::cos((2.0 * 3.14159265358979323846 * n) / (nfft - 1));
+                    const double s = static_cast<double>(mono[base + static_cast<size_t>(n)]) * w;
+                    const double ph = (2.0 * 3.14159265358979323846 * fft_bin * n) / nfft;
+                    re += s * std::cos(ph);
+                    im -= s * std::sin(ph);
+                }
+                const double mag = std::sqrt(re * re + im * im);
+                acc[static_cast<size_t>(k)] += mag;
+            }
+            ++frames;
+        }
+
+        if (frames <= 0) return;
+        for (int i = 0; i < bins; ++i) {
+            const double v = acc[static_cast<size_t>(i)] / static_cast<double>(frames);
+            out_bins[static_cast<size_t>(i)] = 20.0 * std::log10(std::max(v, 1e-12));
+        }
+    };
+
+    AceFileAnalysis a{};
+    AceFileAnalysis b{};
+    if (progress_cb) progress_cb(0.0f, userdata);
+    if (ace_analyze_file(path_a, &a, nullptr, nullptr) != 0) return -2;
+    if (progress_cb) progress_cb(0.2f, userdata);
+    if (ace_analyze_file(path_b, &b, nullptr, nullptr) != 0) return -3;
+    if (progress_cb) progress_cb(0.4f, userdata);
+
+    std::vector<float> mono_a;
+    std::vector<float> mono_b;
+    uint32_t sr_a = 0;
+    uint32_t sr_b = 0;
+    if (decode_preview(path_a, 8000, 30, mono_a, sr_a) != 0) return -4;
+    if (decode_preview(path_b, 8000, 30, mono_b, sr_b) != 0) return -5;
+    if (progress_cb) progress_cb(0.7f, userdata);
+
+    const int lag = best_lag(mono_a, mono_b, 8000 * 5);
+    out->time_offset_ms = static_cast<int32_t>((1000.0 * lag) / 8000.0);
+
+    out->dr_a = a.dynamic_range_db;
+    out->dr_b = b.dynamic_range_db;
+    out->lufs_a = a.lufs_integrated;
+    out->lufs_b = b.lufs_integrated;
+    out->true_peak_a = a.true_peak_dbtp;
+    out->true_peak_b = b.true_peak_dbtp;
+
+    std::vector<double> sa;
+    std::vector<double> sb;
+    long_term_spectrum(mono_a, ACE_MASTERING_DELTA_BINS, sa);
+    long_term_spectrum(mono_b, ACE_MASTERING_DELTA_BINS, sb);
+
+    out->spectral_delta_count = ACE_MASTERING_DELTA_BINS;
+    for (uint32_t i = 0; i < ACE_MASTERING_DELTA_BINS; ++i) {
+        const double da = (i < sa.size()) ? sa[i] : -120.0;
+        const double db = (i < sb.size()) ? sb[i] : -120.0;
+        out->spectral_delta_db[i] = static_cast<float>(std::clamp(da - db, -60.0, 60.0));
+    }
+
+    if (progress_cb) progress_cb(1.0f, userdata);
+    return 0;
+}
+
 // ── Callbacks ────────────────────────────────────────────────────────────────
 
 void ace_set_meter_callback(AceMeterCallback cb, void* ud)

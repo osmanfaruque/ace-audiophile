@@ -134,6 +134,18 @@ pub struct FileAnalysisResult {
     pub chunks: serde_json::Value,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MasteringComparisonPayload {
+    pub time_offset_ms: i32,
+    pub dr_a: f64,
+    pub dr_b: f64,
+    pub lufs_a: f64,
+    pub lufs_b: f64,
+    pub true_peak_a: f64,
+    pub true_peak_b: f64,
+    pub spectral_delta_db: Vec<f64>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct MetadataWritePayload {
     #[serde(default)]
@@ -402,6 +414,17 @@ pub async fn ace_generate_spectrogram(
     channel_index: u32,
 ) -> Result<Vec<f32>, AppError> {
     crate::bridge::generate_spectrogram(&file_path, channel_index)
+        .map_err(|e| AppError::AnalysisFailed(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn ace_compare_mastering(
+    app: AppHandle,
+    file_a: String,
+    file_b: String,
+) -> Result<MasteringComparisonPayload, AppError> {
+    crate::bridge::compare_mastering(&app, &file_a, &file_b)
+        .await
         .map_err(|e| AppError::AnalysisFailed(e.to_string()))
 }
 
