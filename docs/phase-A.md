@@ -182,12 +182,12 @@
 
 ### A6.1 Stream Protocol (C++ engine)
 
-- [ ] **A6.1.1** HTTP ICY header parser (`Icy-MetaData`, `Icy-MetaInt`)
-- [ ] **A6.1.2** Inline ICY metadata extraction (`StreamTitle`, `StreamUrl`)
-- [ ] **A6.1.3** Reconnect-on-drop (3 retries, exponential backoff)
-- [ ] **A6.1.4** HLS (M3U8) support
-  - [ ] **A6.1.4.1** M3U8 playlist parser
-  - [ ] **A6.1.4.2** Segment downloader + stitcher → decode pipeline
+- [x] **A6.1.1** HTTP ICY header parser (`Icy-MetaData`, `Icy-MetaInt`)
+- [x] **A6.1.2** Inline ICY metadata extraction (`StreamTitle`, `StreamUrl`)
+- [x] **A6.1.3** Reconnect-on-drop (3 retries, exponential backoff)
+- [x] **A6.1.4** HLS (M3U8) support
+  - [x] **A6.1.4.1** M3U8 playlist parser
+  - [x] **A6.1.4.2** Segment downloader + stitcher → decode pipeline
 
 ### A6.2 Radio Browser API (`api.radio-browser.info`)
 

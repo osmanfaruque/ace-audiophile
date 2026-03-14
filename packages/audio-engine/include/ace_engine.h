@@ -377,6 +377,54 @@ typedef struct AceBitPerfectResult {
  *  device_id may be NULL for the default device.  Returns 0 on success. */
 int ace_verify_bitperfect(const char* device_id, AceBitPerfectResult* out);
 
+/* ── Stream protocol (A6.1) ─────────────────────────────────────────────── */
+
+#define ACE_ICY_TEXT_CAP 256
+#define ACE_HLS_URI_CAP 1024
+#define ACE_HLS_MAX_SEGMENTS 256
+
+typedef struct AceIcyHeaderInfo {
+    uint8_t metadata_enabled;
+    uint32_t metaint;
+    uint32_t bitrate_kbps;
+    char name[ACE_ICY_TEXT_CAP];
+    char genre[ACE_ICY_TEXT_CAP];
+    char url[ACE_ICY_TEXT_CAP];
+} AceIcyHeaderInfo;
+
+typedef struct AceIcyMetadata {
+    char stream_title[ACE_ICY_TEXT_CAP];
+    char stream_url[ACE_ICY_TEXT_CAP];
+} AceIcyMetadata;
+
+typedef struct AceHlsSegment {
+    char uri[ACE_HLS_URI_CAP];
+    float duration_sec;
+} AceHlsSegment;
+
+typedef struct AceHlsPlaylist {
+    uint8_t is_live;
+    uint32_t target_duration;
+    uint32_t segment_count;
+    AceHlsSegment segments[ACE_HLS_MAX_SEGMENTS];
+} AceHlsPlaylist;
+
+/** Parse ICY response headers and extract metadata flags/fields. */
+int ace_parse_icy_headers(const char* headers_blob, AceIcyHeaderInfo* out);
+
+/** Parse one ICY metadata block (raw bytes after metaint interval). */
+int ace_parse_icy_metadata_block(const uint8_t* block, uint32_t block_len, AceIcyMetadata* out);
+
+/** Returns retry backoff delay in ms for attempt index [0..2], else -1. */
+int ace_stream_reconnect_backoff_ms(uint32_t attempt_index);
+
+/** Parse an M3U8 playlist and resolve segment URIs against base_url. */
+int ace_parse_hls_m3u8(const char* m3u8_text, const char* base_url, AceHlsPlaylist* out);
+
+/** Download and stitch HLS segments into a single byte stream file. */
+int ace_download_and_stitch_hls(const AceHlsPlaylist* playlist, const char* output_path,
+                                uint32_t max_segments);
+
 #ifdef __cplusplus
 }
 #endif

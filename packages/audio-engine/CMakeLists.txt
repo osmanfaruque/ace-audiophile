@@ -96,6 +96,7 @@ endif()
 # ── Source files ──────────────────────────────────────────────────────────────
 set(ACE_SOURCES
     src/AudioEngine.cpp
+    src/stream/StreamProtocol.cpp
     src/decoder/FFmpegDecoder.cpp
     src/dsp/DspChain.cpp
     src/dsp/PEQ.cpp
