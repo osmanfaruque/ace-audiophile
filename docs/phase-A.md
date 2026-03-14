@@ -283,9 +283,9 @@
 
 ### A8.4 Integration
 
-- [ ] **A8.4.1** CSV import → compute correction → overlay in FR chart
-- [ ] **A8.4.2** "Apply to PEQ" → `dspStore` + `ace_set_eq_band` for all 60 bands
-- [ ] **A8.4.3** Local-only tuning scope toggle (apply inside app only, easy bypass)
+- [x] **A8.4.1** CSV import → compute correction → overlay in FR chart
+- [x] **A8.4.2** "Apply to PEQ" → `dspStore` + `ace_set_eq_band` for all 60 bands
+- [x] **A8.4.3** Local-only tuning scope toggle (apply inside app only, easy bypass)
 
 ---
 

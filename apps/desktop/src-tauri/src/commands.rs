@@ -429,6 +429,26 @@ pub async fn ace_compare_mastering(
 }
 
 #[tauri::command]
+pub async fn ace_autoeq_fit(
+    _app: AppHandle,
+    measured_freq_hz: Vec<f32>,
+    measured_spl_db: Vec<f32>,
+    target_freq_hz: Vec<f32>,
+    target_spl_db: Vec<f32>,
+    band_count: Option<u32>,
+) -> Result<Vec<EqBandPayload>, AppError> {
+    let bands = crate::bridge::fit_autoeq_bands(
+        measured_freq_hz,
+        measured_spl_db,
+        target_freq_hz,
+        target_spl_db,
+        band_count.unwrap_or(60) as usize,
+    )
+    .map_err(|e| AppError::AnalysisFailed(e.to_string()))?;
+    Ok(bands)
+}
+
+#[tauri::command]
 pub async fn ace_scan_folder(app: AppHandle, path: String) -> Result<u32, AppError> {
     crate::bridge::scan_folder(&app, &path).map_err(|e| AppError::ScanFailed(e.to_string()))
 }

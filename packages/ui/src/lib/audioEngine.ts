@@ -18,6 +18,7 @@ import type {
   LevelMeter,
   AudioTrack,
   FileAnalysisResult,
+  EqBand,
   MasteringComparisonResult,
 } from '@ace/types'
 
@@ -236,6 +237,13 @@ export interface IAudioEngine {
 
   // Analysis (A3.1.4)
   analyzeFile(filePath: string): Promise<FileAnalysisResult>
+  fitAutoEqBands(
+    measuredFreqHz: number[],
+    measuredSplDb: number[],
+    targetFreqHz: number[],
+    targetSplDb: number[],
+    bandCount?: number,
+  ): Promise<EqBand[]>
   compareMastering(fileA: string, fileB: string): Promise<MasteringComparisonResult>
   generateSpectrogram(filePath: string, channelIndex: number): Promise<Float32Array>
 
@@ -359,6 +367,37 @@ class TauriAudioEngine implements IAudioEngine {
 
   async analyzeFile(filePath: string): Promise<FileAnalysisResult> {
     return invoke<FileAnalysisResult>('ace_analyze_file', { filePath })
+  }
+
+  async fitAutoEqBands(
+    measuredFreqHz: number[],
+    measuredSplDb: number[],
+    targetFreqHz: number[],
+    targetSplDb: number[],
+    bandCount = 60,
+  ): Promise<EqBand[]> {
+    const rows = await invoke<Array<{
+      freq_hz: number
+      gain_db: number
+      q: number
+      enabled: boolean
+      filter_type: number
+    }>>('ace_autoeq_fit', {
+      measuredFreqHz,
+      measuredSplDb,
+      targetFreqHz,
+      targetSplDb,
+      bandCount,
+    })
+
+    return rows.map((row, i) => ({
+      id: i,
+      frequency: row.freq_hz,
+      gainDb: row.gain_db,
+      q: row.q,
+      enabled: row.enabled,
+      type: 'peaking',
+    }))
   }
 
   async compareMastering(fileA: string, fileB: string): Promise<MasteringComparisonResult> {

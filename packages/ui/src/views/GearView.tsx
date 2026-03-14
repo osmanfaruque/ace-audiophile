@@ -7,7 +7,9 @@ import {
   Check, X, Zap, FileDown, RotateCcw, Info,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { GearProfile, TargetCurve } from '@ace/types'
+import { getAudioEngine } from '@/lib/audioEngine'
+import { useDspStore } from '@/store/dspStore'
+import type { EqBand, GearProfile, TargetCurve } from '@ace/types'
 import {
   parseAutoEqCsv,
   parseRewTxt,
@@ -83,12 +85,14 @@ function FRChart({
   targetCurve,
   showCorrection,
   customAnchors,
+  fittedBands,
   onChangeCustomAnchors,
 }: {
   gear: GearProfile
   targetCurve: TargetCurve
   showCorrection: boolean
   customAnchors: TargetAnchor[]
+  fittedBands: EqBand[]
   onChangeCustomAnchors: (anchors: TargetAnchor[]) => void
 }) {
   const W = 780, H = 340
@@ -126,6 +130,11 @@ function FRChart({
   const measuredPath = pathOfData(yOfSpl, gear.frSpl)
   const targetPath = pathOfData(yOfSpl, targetFR)
   const corrPath = pathOfData(yOfCorr, correction)
+  const fittedPath = fittedBands.length
+    ? fittedBands
+        .map((b, i) => `${i === 0 ? 'M' : 'L'}${xOf(b.frequency).toFixed(1)},${yOfCorr(b.gainDb).toFixed(1)}`)
+        .join(' ')
+    : ''
 
   const editableAnchors = useMemo(
     () => getCurveAnchors(targetCurve, customAnchors),
@@ -211,6 +220,17 @@ function FRChart({
           <path d={corrPath} fill="none" stroke="var(--ace-accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
           <path d={corrPath + `L${xOf(20000)},${yOfCorr(0)} L${xOf(20)},${yOfCorr(0)} Z`}
             fill="var(--ace-accent)" opacity="0.08" />
+          {fittedPath && (
+            <path
+              d={fittedPath}
+              fill="none"
+              stroke="rgba(255,180,90,0.95)"
+              strokeWidth="1.8"
+              strokeDasharray="4 3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
         </>
       ) : (
         <>
@@ -288,26 +308,28 @@ function EqCorrectionTable({
   gear,
   targetCurve,
   customAnchors,
+  fittedBands,
 }: {
   gear: GearProfile
   targetCurve: TargetCurve
   customAnchors: TargetAnchor[]
+  fittedBands: EqBand[]
 }) {
   const targetFR = useMemo(
     () => getTargetCurvePoints(targetCurve, gear.frFrequencies, customAnchors),
     [targetCurve, gear.frFrequencies, customAnchors],
   )
 
-  // Pick ~10 bands for PEQ correction display
   const bands = useMemo(() => {
-    const correction = gear.frSpl.map((spl, i) => ({ freq: gear.frFrequencies[i], gain: Math.round((targetFR[i] - spl) * 10) / 10 }))
-    // Filter to significant deviations and downsample
-    const sig = correction.filter(b => Math.abs(b.gain) >= 1.5)
-    // Pick up to 10 evenly spaced
-    if (sig.length <= 10) return sig
-    const step = Math.ceil(sig.length / 10)
-    return sig.filter((_, i) => i % step === 0).slice(0, 10)
-  }, [gear.frSpl, targetFR])
+    if (fittedBands.length > 0) {
+      return fittedBands.map((b) => ({ freq: b.frequency, gain: b.gainDb, q: b.q }))
+    }
+    return gear.frSpl.map((spl, i) => ({
+      freq: gear.frFrequencies[i],
+      gain: Math.round((targetFR[i] - spl) * 10) / 10,
+      q: 1.0 + Math.abs(targetFR[i] - spl) * 0.15,
+    }))
+  }, [fittedBands, gear.frSpl, gear.frFrequencies, targetFR])
 
   return (
     <div className="border rounded overflow-hidden" style={{ borderColor: 'var(--ace-border)' }}>
@@ -328,7 +350,7 @@ function EqCorrectionTable({
             {b.gain > 0 ? '+' : ''}{b.gain} dB
           </span>
           <span className="font-mono" style={{ color: 'var(--ace-text-muted)' }}>
-            {(1.0 + Math.abs(b.gain) * 0.15).toFixed(2)}
+            {(b.q ?? (1.0 + Math.abs(b.gain) * 0.15)).toFixed(2)}
           </span>
           <span style={{ color: 'var(--ace-text-muted)' }}>Peak</span>
         </div>
@@ -345,6 +367,10 @@ function EqCorrectionTable({
 // ── Main GearView ─────────────────────────────────────────────────────────────
 
 export function GearView() {
+  const audioEngine = useMemo(() => getAudioEngine(), [])
+  const dspState = useDspStore((s) => s.state)
+  const updateBand = useDspStore((s) => s.updateBand)
+  const setEqEnabled = useDspStore((s) => s.setEqEnabled)
   const [gearList, setGearList] = useState<GearProfile[]>(SAMPLE_GEAR)
   const [selectedId, setSelectedId] = useState<string>(SAMPLE_GEAR[0].id)
   const [searchQuery, setSearchQuery] = useState('')
@@ -354,9 +380,19 @@ export function GearView() {
   const [showCorrection, setShowCorrection] = useState(false)
   const [showEqTable, setShowEqTable] = useState(true)
   const [importIssues, setImportIssues] = useState<string[]>([])
+  const [fittedBands, setFittedBands] = useState<EqBand[]>([])
+  const [fitStatus, setFitStatus] = useState<'idle' | 'running' | 'ready' | 'error'>('idle')
+  const [fitError, setFitError] = useState<string>('')
+  const [localOnlyScope, setLocalOnlyScope] = useState(true)
+  const [hasLocalApply, setHasLocalApply] = useState(false)
+  const localBypassSnapshot = useRef<{ bands: EqBand[]; eqEnabled: boolean } | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const selected = gearList.find(g => g.id === selectedId) ?? gearList[0]
+  const targetFR = useMemo(() => {
+    if (!selected) return []
+    return getTargetCurvePoints(targetCurve, selected.frFrequencies, customAnchors)
+  }, [selected, targetCurve, customAnchors])
 
   const filtered = useMemo(() => {
     let list = gearList
@@ -402,6 +438,95 @@ export function GearView() {
     setSelectedId(id)
     setImportIssues(parsed.issues)
   }, [])
+
+  useEffect(() => {
+    if (!selected) {
+      setFittedBands([])
+      setFitStatus('idle')
+      setFitError('')
+      return
+    }
+    if (selected.frFrequencies.length === 0 || selected.frSpl.length === 0 || targetFR.length === 0) {
+      setFittedBands([])
+      setFitStatus('idle')
+      setFitError('')
+      return
+    }
+
+    let cancelled = false
+    setFitStatus('running')
+    setFitError('')
+
+    audioEngine
+      .fitAutoEqBands(
+        selected.frFrequencies,
+        selected.frSpl,
+        selected.frFrequencies,
+        targetFR,
+        60,
+      )
+      .then((bands) => {
+        if (cancelled) return
+        setFittedBands(bands)
+        setFitStatus('ready')
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error('Auto-EQ fit failed', err)
+        setFittedBands([])
+        setFitStatus('error')
+        setFitError('Failed to compute correction bands from measured FR.')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [audioEngine, selected, targetFR])
+
+  const handleApplyToPeq = useCallback(() => {
+    if (fittedBands.length === 0) return
+
+    if (localOnlyScope && !hasLocalApply) {
+      localBypassSnapshot.current = {
+        bands: dspState.bands.map((b) => ({ ...b })),
+        eqEnabled: dspState.eqEnabled,
+      }
+    }
+
+    fittedBands.forEach((band, index) => {
+      updateBand(index, {
+        enabled: true,
+        frequency: band.frequency,
+        gainDb: band.gainDb,
+        q: band.q,
+        type: 'peaking',
+      })
+    })
+    setEqEnabled(true)
+
+    if (localOnlyScope) {
+      setHasLocalApply(true)
+    }
+  }, [dspState.bands, dspState.eqEnabled, fittedBands, hasLocalApply, localOnlyScope, setEqEnabled, updateBand])
+
+  const handleBypassAutoEq = useCallback(() => {
+    if (localOnlyScope && hasLocalApply && localBypassSnapshot.current) {
+      localBypassSnapshot.current.bands.forEach((band, index) => {
+        updateBand(index, {
+          enabled: band.enabled,
+          frequency: band.frequency,
+          gainDb: band.gainDb,
+          q: band.q,
+          type: band.type,
+        })
+      })
+      setEqEnabled(localBypassSnapshot.current.eqEnabled)
+      setHasLocalApply(false)
+      return
+    }
+
+    setEqEnabled(!dspState.eqEnabled)
+  }, [dspState.eqEnabled, hasLocalApply, localOnlyScope, setEqEnabled, updateBand])
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--ace-bg)', color: 'var(--ace-text-primary)' }}>
@@ -589,11 +714,25 @@ export function GearView() {
                 <FileDown size={12} /> Export EQ
               </button>
               <button
+                onClick={handleApplyToPeq}
+                disabled={fitStatus !== 'ready' || fittedBands.length === 0}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-semibold transition-all hover:opacity-90 active:scale-95"
-                style={{ background: 'var(--ace-accent)', color: '#fff' }}
+                style={{
+                  background: fitStatus === 'ready' && fittedBands.length > 0 ? 'var(--ace-accent)' : 'rgba(120,120,120,0.35)',
+                  color: '#fff',
+                  cursor: fitStatus === 'ready' && fittedBands.length > 0 ? 'pointer' : 'not-allowed',
+                }}
                 title="Apply correction to Audiophile Ace PEQ"
               >
                 <Zap size={12} /> Apply to PEQ
+              </button>
+              <button
+                onClick={handleBypassAutoEq}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border hover:bg-white/5 transition-colors"
+                style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-secondary)' }}
+                title="Bypass current Auto-EQ quickly"
+              >
+                <X size={12} /> {dspState.eqEnabled ? 'Bypass Auto-EQ' : 'Enable Auto-EQ'}
               </button>
             </div>
           )}
@@ -610,12 +749,28 @@ export function GearView() {
                 <div className="text-[10px] px-2" style={{ color: 'var(--ace-text-muted)' }}>
                   {TARGET_CURVES.find((t) => t.value === targetCurve)?.desc}
                 </div>
+                <div className="flex items-center gap-2 px-2 text-[10px]" style={{ color: 'var(--ace-text-muted)' }}>
+                  <button
+                    onClick={() => setLocalOnlyScope((v) => !v)}
+                    className="px-2 py-0.5 border rounded hover:bg-white/5 transition-colors"
+                    style={{ borderColor: 'var(--ace-border)', color: localOnlyScope ? 'var(--ace-accent)' : 'var(--ace-text-secondary)' }}
+                    title="When enabled, Auto-EQ can be bypassed back to previous bands in one click"
+                  >
+                    Scope: {localOnlyScope ? 'Local-only' : 'Persistent'}
+                  </button>
+                  <span>
+                    {fitStatus === 'running' && 'Computing 60-band correction...'}
+                    {fitStatus === 'ready' && `${fittedBands.length} correction bands ready`}
+                    {fitStatus === 'error' && fitError}
+                  </span>
+                </div>
                 <div className="flex-1">
                   <FRChart
                     gear={selected}
                     targetCurve={targetCurve}
                     showCorrection={showCorrection}
                     customAnchors={customAnchors}
+                    fittedBands={fittedBands}
                     onChangeCustomAnchors={setCustomAnchors}
                   />
                 </div>
@@ -644,7 +799,7 @@ export function GearView() {
               </button>
               {showEqTable && (
                 <div className="px-4 pb-3">
-                  <EqCorrectionTable gear={selected} targetCurve={targetCurve} customAnchors={customAnchors} />
+                  <EqCorrectionTable gear={selected} targetCurve={targetCurve} customAnchors={customAnchors} fittedBands={fittedBands} />
                   <p className="text-[10px] mt-2" style={{ color: 'var(--ace-text-muted)' }}>
                     Generated PEQ bands to match selected target curve. Click "Apply to PEQ" to load into the Equalizer.
                   </p>

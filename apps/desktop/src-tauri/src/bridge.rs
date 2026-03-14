@@ -21,7 +21,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::commands::{
-    AudioDeviceInfo, DspStatePayload, FileAnalysisResult, MasteringComparisonPayload,
+    AudioDeviceInfo, DspStatePayload, EqBandPayload, FileAnalysisResult, MasteringComparisonPayload,
     MetadataWritePayload, TrackInfo,
 };
 
@@ -687,6 +687,74 @@ pub async fn compare_mastering(
         true_peak_b: out.true_peak_b as f64,
         spectral_delta_db,
     })
+}
+
+pub fn fit_autoeq_bands(
+    measured_freq_hz: Vec<f32>,
+    measured_spl_db: Vec<f32>,
+    target_freq_hz: Vec<f32>,
+    target_spl_db: Vec<f32>,
+    band_count: usize,
+) -> Result<Vec<EqBandPayload>, BoxError> {
+    if measured_freq_hz.len() != measured_spl_db.len() {
+        return Err("measured frequency/SPL length mismatch".into());
+    }
+    if target_freq_hz.len() != target_spl_db.len() {
+        return Err("target frequency/SPL length mismatch".into());
+    }
+    if band_count == 0 {
+        return Err("band_count must be > 0".into());
+    }
+
+    let mut out: Vec<CAceEqBand> = Vec::with_capacity(band_count);
+    out.resize_with(band_count, || CAceEqBand {
+        freq_hz: 0.0,
+        gain_db: 0.0,
+        q: 1.0,
+        enabled: 1,
+        filter_type: 0,
+    });
+
+    let rc = unsafe {
+        let ace_fit_autoeq_bands: Symbol<
+            unsafe extern "C" fn(
+                *const f32,
+                *const f32,
+                i32,
+                *const f32,
+                *const f32,
+                i32,
+                *mut CAceEqBand,
+                i32,
+            ) -> i32,
+        > = sym(b"ace_fit_autoeq_bands\0")?;
+
+        ace_fit_autoeq_bands(
+            measured_freq_hz.as_ptr(),
+            measured_spl_db.as_ptr(),
+            measured_freq_hz.len() as i32,
+            target_freq_hz.as_ptr(),
+            target_spl_db.as_ptr(),
+            target_freq_hz.len() as i32,
+            out.as_mut_ptr(),
+            band_count as i32,
+        )
+    };
+
+    if rc != 0 {
+        return Err(format!("ace_fit_autoeq_bands failed (code {rc})").into());
+    }
+
+    Ok(out
+        .into_iter()
+        .map(|b| EqBandPayload {
+            freq_hz: b.freq_hz,
+            gain_db: b.gain_db,
+            q: b.q,
+            enabled: b.enabled != 0,
+            filter_type: b.filter_type,
+        })
+        .collect())
 }
 
 pub fn write_metadata(payload: MetadataWritePayload) -> Result<(), BoxError> {
