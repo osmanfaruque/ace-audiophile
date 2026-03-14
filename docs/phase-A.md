@@ -151,13 +151,13 @@
 
 ### A5.1 Schema (`tauri-plugin-sql`)
 
-- [ ] **A5.1.1** `tracks` table — all `AudioTrack` fields indexed
-- [ ] **A5.1.2** `albums`, `artists`, `genres` tables — normalized
-- [ ] **A5.1.3** FTS5 virtual table for full-text search
-- [ ] **A5.1.4** `playlists` + `playlist_tracks` (M3U export compatible)
-- [ ] **A5.1.5** `ratings` (track_id, stars, timestamp)
-- [ ] **A5.1.6** `listening_events` (track_id, started_at, ended_at, completed)
-- [ ] **A5.1.7** `play_count` aggregate per track
+- [x] **A5.1.1** `tracks` table — all `AudioTrack` fields indexed
+- [x] **A5.1.2** `albums`, `artists`, `genres` tables — normalized
+- [x] **A5.1.3** FTS5 virtual table for full-text search
+- [x] **A5.1.4** `playlists` + `playlist_tracks` (M3U export compatible)
+- [x] **A5.1.5** `ratings` (track_id, stars, timestamp)
+- [x] **A5.1.6** `listening_events` (track_id, started_at, ended_at, completed)
+- [x] **A5.1.7** `play_count` aggregate per track
 
 ### A5.2 Infrastructure
 

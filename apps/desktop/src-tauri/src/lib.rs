@@ -8,14 +8,22 @@ mod bridge;
 mod error;
 mod watcher;
 mod autotag;
+mod db;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let db_migrations = db::migrations();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_sql::Builder::default()
+                .add_migrations(db::DB_URL, db_migrations)
+                .build(),
+        )
         .setup(|app| {
             // Initialize the C++ audio engine on startup
             bridge::init(app.handle().clone()).map_err(|e| e.to_string())?;
