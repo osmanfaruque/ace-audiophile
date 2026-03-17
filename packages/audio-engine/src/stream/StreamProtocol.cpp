@@ -111,7 +111,7 @@ int append_url_bytes_to_file(const std::string& url, std::ofstream& out)
     uint8_t buf[16 * 1024];
     while (true) {
         const int n = avio_read(io, buf, static_cast<int>(sizeof(buf)));
-        if (n == AVERROR_EOF || n == 0) {
+        if (n == 0 || avio_feof(io)) {
             break;
         }
         if (n < 0) {

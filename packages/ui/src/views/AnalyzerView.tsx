@@ -622,9 +622,12 @@ export function AnalyzerView() {
   // Sync with now-playing track
   useEffect(() => {
     if (currentTrack && currentTrack.id !== track?.id) {
-      setTrack(currentTrack)
-      setResult(null)
-      setStatus('idle')
+      const timer = setTimeout(() => {
+        setTrack(currentTrack)
+        setResult(null)
+        setStatus('idle')
+      }, 0)
+      return () => clearTimeout(timer)
     }
   }, [currentTrack, track])
 

@@ -16,6 +16,7 @@ export function SeekBar({ positionMs, durationMs, onSeek, className, thick }: Se
   const barRef = useRef<HTMLDivElement>(null)
   const [hovering, setHovering] = useState(false)
   const [hoverFrac, setHoverFrac] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
   const dragging = useRef(false)
 
   const fracFromEvent = useCallback((e: React.MouseEvent) => {
@@ -28,6 +29,7 @@ export function SeekBar({ positionMs, durationMs, onSeek, className, thick }: Se
     (e: React.MouseEvent) => {
       e.preventDefault()
       dragging.current = true
+      setIsDragging(true)
       onSeek(fracFromEvent(e) * durationMs)
     },
     [durationMs, onSeek, fracFromEvent],
@@ -44,6 +46,7 @@ export function SeekBar({ positionMs, durationMs, onSeek, className, thick }: Se
 
   const handleMouseUp = useCallback(() => {
     dragging.current = false
+    setIsDragging(false)
   }, [])
 
   const progress = durationMs > 0 ? positionMs / durationMs : 0
@@ -65,6 +68,7 @@ export function SeekBar({ positionMs, durationMs, onSeek, className, thick }: Se
         onMouseLeave={() => {
           setHovering(false)
           dragging.current = false
+          setIsDragging(false)
         }}
       >
         {/* Filled track */}
@@ -78,7 +82,7 @@ export function SeekBar({ positionMs, durationMs, onSeek, className, thick }: Se
           className={cn(
             'absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full shadow-lg z-10',
             'transition-opacity duration-150',
-            hovering || dragging.current ? 'opacity-100' : 'opacity-0',
+            hovering || isDragging ? 'opacity-100' : 'opacity-0',
           )}
           style={{ left: `${progress * 100}%`, background: 'var(--ace-accent)' }}
         />

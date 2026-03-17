@@ -1,4 +1,4 @@
-use tauri::Manager;
+use tauri::{Manager, RunEvent};
 
 /// All Tauri commands are defined here and forwarded to the C++ audio engine
 /// via the bridge module.
@@ -83,6 +83,13 @@ pub fn run() {
             commands::ace_radio_load_favorites,
             commands::ace_radio_load_recents,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Audiophile Ace");
+        .build(tauri::generate_context!())
+        .expect("error while building Audiophile Ace")
+        .run(|_app_handle, event| {
+            if let RunEvent::Exit = event {
+                if let Err(err) = bridge::engine_destroy() {
+                    eprintln!("[AceBridge] Engine shutdown on exit failed: {err}");
+                }
+            }
+        });
 }

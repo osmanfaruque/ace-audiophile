@@ -6,7 +6,7 @@ import {
   Calendar, Headphones, Award, Flame, ChevronRight,
 } from 'lucide-react'
 import { cn, formatDuration } from '@/lib/utils'
-import type { ListeningStats, QualityBucket } from '@ace/types'
+import type { ListeningStats, QualityBucket, AudioTrack, Album } from '@ace/types'
 import { getAudioEngine } from '@/lib/audioEngine'
 
 // ── Sample data ───────────────────────────────────────────────────────────────
@@ -33,11 +33,11 @@ function generateSampleStats(): ListeningStats {
   return {
     totalMs: daily.reduce((s, d) => s + d.totalMs, 0),
     topTracks: [
-      { track: { id: '1', title: 'Shine On You Crazy Diamond', artist: 'Pink Floyd' } as any, playCount: 142, totalMs: 142 * 810000 },
-      { track: { id: '2', title: 'Echoes', artist: 'Pink Floyd' } as any, playCount: 98, totalMs: 98 * 1380000 },
-      { track: { id: '3', title: 'Close to the Edge', artist: 'Yes' } as any, playCount: 87, totalMs: 87 * 1100000 },
-      { track: { id: '4', title: 'Lateralus', artist: 'Tool' } as any, playCount: 76, totalMs: 76 * 560000 },
-      { track: { id: '5', title: 'Comfortably Numb', artist: 'Pink Floyd' } as any, playCount: 71, totalMs: 71 * 383000 },
+      { track: { id: '1', title: 'Shine On You Crazy Diamond', artist: 'Pink Floyd' } as unknown as AudioTrack, playCount: 142, totalMs: 142 * 810000 },
+      { track: { id: '2', title: 'Echoes', artist: 'Pink Floyd' } as unknown as AudioTrack, playCount: 98, totalMs: 98 * 1380000 },
+      { track: { id: '3', title: 'Close to the Edge', artist: 'Yes' } as unknown as AudioTrack, playCount: 87, totalMs: 87 * 1100000 },
+      { track: { id: '4', title: 'Lateralus', artist: 'Tool' } as unknown as AudioTrack, playCount: 76, totalMs: 76 * 560000 },
+      { track: { id: '5', title: 'Comfortably Numb', artist: 'Pink Floyd' } as unknown as AudioTrack, playCount: 71, totalMs: 71 * 383000 },
     ],
     topArtists: [
       { artist: 'Pink Floyd', playCount: 520, totalMs: 520 * 480000 },
@@ -47,11 +47,11 @@ function generateSampleStats(): ListeningStats {
       { artist: 'Radiohead', playCount: 176, totalMs: 176 * 290000 },
     ],
     topAlbums: [
-      { album: { id: 'a1', title: 'Wish You Were Here', artist: 'Pink Floyd' } as any, playCount: 210, totalMs: 210 * 450000 },
-      { album: { id: 'a2', title: 'Lateralus', artist: 'Tool' } as any, playCount: 180, totalMs: 180 * 420000 },
-      { album: { id: 'a3', title: 'Close to the Edge', artist: 'Yes' } as any, playCount: 155, totalMs: 155 * 540000 },
-      { album: { id: 'a4', title: 'In the Court of the Crimson King', artist: 'King Crimson' } as any, playCount: 130, totalMs: 130 * 520000 },
-      { album: { id: 'a5', title: 'OK Computer', artist: 'Radiohead' } as any, playCount: 120, totalMs: 120 * 320000 },
+      { album: { id: 'a1', title: 'Wish You Were Here', artist: 'Pink Floyd' } as unknown as Album, playCount: 210, totalMs: 210 * 450000 },
+      { album: { id: 'a2', title: 'Lateralus', artist: 'Tool' } as unknown as Album, playCount: 180, totalMs: 180 * 420000 },
+      { album: { id: 'a3', title: 'Close to the Edge', artist: 'Yes' } as unknown as Album, playCount: 155, totalMs: 155 * 540000 },
+      { album: { id: 'a4', title: 'In the Court of the Crimson King', artist: 'King Crimson' } as unknown as Album, playCount: 130, totalMs: 130 * 520000 },
+      { album: { id: 'a5', title: 'OK Computer', artist: 'Radiohead' } as unknown as Album, playCount: 120, totalMs: 120 * 320000 },
     ],
     topGenres: [
       { genre: 'Progressive Rock', playCount: 890, totalMs: 890 * 480000 },
@@ -85,11 +85,6 @@ function fmtHoursLong(ms: number): string {
   const m = Math.round((ms % 3600000) / 60000)
   if (h > 0) return `${h}h ${m}m`
   return `${m}m`
-}
-
-function fmtDays(ms: number): string {
-  const d = ms / 86400000
-  return d >= 1 ? `${d.toFixed(1)} days` : fmtHoursLong(ms)
 }
 
 // ── Stat Card ─────────────────────────────────────────────────────────────────
@@ -312,7 +307,8 @@ function CalendarHeatmap({ data }: { data: { date: string; totalMs: number }[] }
 function QualityDonut({ buckets }: { buckets: QualityBucket[] }) {
   const total = buckets.reduce((s, b) => s + b.totalMs, 0)
   const colors = ['#7c6aff', '#4caf82', '#4fa3e0', '#f5a623', '#e5534b', '#a855f7']
-  let cumPct = 0
+  const percentages = buckets.map((b) => (total > 0 ? (b.totalMs / total) * 100 : 0))
+  const offsets = percentages.map((_, i) => percentages.slice(0, i).reduce((sum, v) => sum + v, 0))
 
   return (
     <div className="flex items-center gap-6">
@@ -320,9 +316,8 @@ function QualityDonut({ buckets }: { buckets: QualityBucket[] }) {
       <div className="relative w-32 h-32 shrink-0">
         <svg viewBox="0 0 42 42" className="w-full h-full -rotate-90">
           {buckets.map((b, i) => {
-            const pct = total > 0 ? (b.totalMs / total) * 100 : 0
-            const offset = cumPct
-            cumPct += pct
+            const pct = percentages[i]
+            const offset = offsets[i]
             return (
               <circle
                 key={i}

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use rusqlite::params;
 use rusqlite::types::ValueRef;
@@ -12,6 +13,7 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub const DB_URL: &str = "sqlite:ace.db";
 const DB_FILE_NAME: &str = "ace.db";
+static DB_SCHEMA_INIT: OnceLock<Result<(), String>> = OnceLock::new();
 
 pub fn migrations() -> Vec<Migration> {
     vec![
@@ -80,7 +82,26 @@ fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, Box<dyn std::error::Error
     let mut base = app.path().app_data_dir()?;
     fs::create_dir_all(&base)?;
     base.push(DB_FILE_NAME);
+
+    let init = DB_SCHEMA_INIT.get_or_init(|| {
+        init_schema(&base).map_err(|e| e.to_string())
+    });
+    if let Err(msg) = init {
+        return Err(std::io::Error::other(msg.clone()).into());
+    }
+
     Ok(base)
+}
+
+fn init_schema(db_path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let conn = Connection::open(db_path)?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+
+    // Keep migrations aligned with SQL plugin schema on first access.
+    conn.execute_batch(include_str!("../migrations/0001_a5_schema_up.sql"))?;
+    conn.execute_batch(include_str!("../migrations/0002_a6_radio_persistence_up.sql"))?;
+
+    Ok(())
 }
 
 fn export_table_rows(conn: &Connection, table: &str) -> Result<Vec<Value>, Box<dyn std::error::Error + Send + Sync>> {

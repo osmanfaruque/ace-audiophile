@@ -106,7 +106,7 @@ function PlayButton({ label, sublabel, active, playing, onClick, color, size = '
               className="w-1 rounded-full animate-pulse"
               style={{
                 background: color,
-                height: `${8 + Math.random() * 8}px`,
+                height: `${8 + i * 3}px`,
                 animationDelay: `${i * 150}ms`,
               }}
             />
@@ -216,7 +216,7 @@ function ResultsPanel({ trials, session }: { trials: AbxTrial[]; session: AbxSes
             </p>
             <p>
               With p = {(pValue ?? 1).toFixed(4)}, there is not enough evidence to conclude that you can
-              reliably distinguish A from B. This doesn't mean they sound the same — try more trials
+              reliably distinguish A from B. This does not mean they sound the same - try more trials
               for higher confidence. At least 12–16 trials recommended.
             </p>
           </>

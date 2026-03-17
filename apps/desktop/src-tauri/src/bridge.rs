@@ -9,10 +9,9 @@
 /// DLL resolution order (A2.1.2):
 ///   1. `$APPDIR/ace_engine.dll`  (bundled next to the Tauri executable)
 ///   2. `../../packages/audio-engine/build/libace_engine.dll` (dev build)
-///   3. System PATH fallback
 
 use std::ffi::{CStr, CString};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -50,31 +49,105 @@ const LIB_NAME: &str = "libace_engine.dylib";
 
 /// Resolve the path to the engine shared library.
 /// Checks multiple candidate paths, returning the first that exists.
-fn resolve_lib_path() -> PathBuf {
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-        .unwrap_or_default();
+fn resolve_lib_path() -> Result<PathBuf, BoxError> {
+    let exe_path = std::env::current_exe()
+        .map_err(|e| format!("Failed to read current executable path: {e}"))?;
+    let exe_dir = exe_path
+        .parent()
+        .map(|d| d.to_path_buf())
+        .ok_or_else(|| "Failed to resolve executable directory".to_string())?;
+
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
     let candidates = [
-        // 1. Next to the Tauri executable (production bundle)
-        exe_dir.join(LIB_NAME),
-        // 2. Dev build output (relative to exe in target/debug)
+        // 1. Dev build output (relative to exe in target/debug)
+        exe_dir.join("../../packages/audio-engine/build").join(LIB_NAME),
+        // 2. Legacy candidate kept for compatibility with older layouts
         exe_dir.join("../../../packages/audio-engine/build").join(LIB_NAME),
         // 3. Workspace root dev build (when CWD is workspace root)
-        PathBuf::from("packages/audio-engine/build").join(LIB_NAME),
+        cwd.join("packages/audio-engine/build").join(LIB_NAME),
+        // 4. When CWD is apps/desktop
+        cwd.join("../../packages/audio-engine/build").join(LIB_NAME),
+        // 5. Relative to this crate path (apps/desktop/src-tauri)
+        manifest_dir.join("../../../packages/audio-engine/build").join(LIB_NAME),
+        // 6. Next to the Tauri executable (production bundle)
+        exe_dir.join(LIB_NAME),
     ];
 
     for candidate in &candidates {
-        if let Ok(canon) = candidate.canonicalize() {
-            eprintln!("[AceBridge] Found engine library at: {}", canon.display());
-            return canon;
+        if candidate.exists() {
+            eprintln!("[AceBridge] Found engine library at: {}", candidate.display());
+            return Ok(candidate.to_path_buf());
         }
     }
 
-    // Fallback: let the OS search PATH / system library dirs
-    eprintln!("[AceBridge] Engine library not found at known paths, falling back to system search");
-    PathBuf::from(LIB_NAME)
+    Err(format!(
+        "Engine library '{}' not found in expected locations (app dir, workspace build outputs)",
+        LIB_NAME
+    )
+    .into())
+}
+
+#[cfg(target_os = "windows")]
+fn copy_dlls_from_dir(src_dir: &Path, dst_dir: &Path) {
+    if let Ok(entries) = std::fs::read_dir(src_dir) {
+        for entry in entries.flatten() {
+            let src = entry.path();
+            let is_dll = src
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("dll"))
+                .unwrap_or(false);
+            if !is_dll {
+                continue;
+            }
+            if let Some(name) = src.file_name() {
+                let dst = dst_dir.join(name);
+                if let Err(err) = std::fs::copy(&src, &dst) {
+                    eprintln!(
+                        "[AceBridge] Warning: failed to copy dependency '{}' -> '{}': {err}",
+                        src.display(),
+                        dst.display()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn stage_windows_runtime(lib_path: &Path) -> Result<PathBuf, BoxError> {
+    let exe_dir = std::env::current_exe()
+        .map_err(|e| format!("Failed to read current executable path: {e}"))?
+        .parent()
+        .map(|p| p.to_path_buf())
+        .ok_or_else(|| "Failed to resolve executable directory".to_string())?;
+
+    let engine_dir = lib_path
+        .parent()
+        .ok_or_else(|| "Failed to resolve engine library directory".to_string())?;
+
+    let staged_engine = exe_dir.join(format!("libace_engine.{}.dll", std::process::id()));
+    if lib_path != staged_engine {
+        std::fs::copy(lib_path, &staged_engine).map_err(|e| {
+            format!(
+                "Failed to stage engine DLL '{}' -> '{}': {e}",
+                lib_path.display(),
+                staged_engine.display()
+            )
+        })?;
+    }
+
+    // Stage direct/transitive dependencies beside the executable.
+    copy_dlls_from_dir(engine_dir, &exe_dir);
+
+    let ffmpeg_bin = engine_dir.join("_deps/ffmpeg_prebuilt-src/bin");
+    if ffmpeg_bin.exists() {
+        copy_dlls_from_dir(&ffmpeg_bin, &exe_dir);
+    }
+
+    Ok(staged_engine)
 }
 
 // ── Library loader ───────────────────────────────────────────
@@ -84,13 +157,25 @@ fn load_library() -> Result<&'static Library, BoxError> {
         return Ok(lib);
     }
 
-    let lib_path = resolve_lib_path();
+    let mut lib_path = resolve_lib_path()?;
+
+    #[cfg(target_os = "windows")]
+    {
+        lib_path = stage_windows_runtime(&lib_path)?;
+    }
+
     eprintln!("[AceBridge] Loading engine library: {}", lib_path.display());
 
     // SAFETY: We trust the ace_engine DLL built from our own source.
     let lib = unsafe { Library::new(&lib_path) }
         .map_err(|e| -> BoxError {
-            format!("Failed to load ace_engine library at '{}': {e}", lib_path.display()).into()
+            let os_err = std::io::Error::last_os_error();
+            format!(
+                "Failed to load ace_engine library at '{}': {e} (os error: {})",
+                lib_path.display(),
+                os_err
+            )
+            .into()
         })?;
 
     ENGINE_LIB.set(lib).ok();
@@ -145,6 +230,7 @@ pub fn engine_init() -> Result<(), BoxError> {
 }
 
 pub fn engine_destroy() -> Result<(), BoxError> {
+    unregister_engine_callbacks()?;
     unsafe {
         let ace_shutdown: Symbol<unsafe extern "C" fn()> = sym(b"ace_shutdown\0")?;
         ace_shutdown();
@@ -1060,5 +1146,31 @@ fn register_engine_callbacks() -> Result<(), BoxError> {
     }
 
     eprintln!("[AceBridge] Engine callbacks registered (FFT@60Hz, Level@30Hz, Pos@10Hz, Error)");
+    Ok(())
+}
+
+fn unregister_engine_callbacks() -> Result<(), BoxError> {
+    unsafe {
+        type MeterCb = unsafe extern "C" fn(
+            *const CAceFftFrame,
+            *const CAceLevelMeter,
+            *mut std::ffi::c_void,
+        );
+        let set_meter: Symbol<unsafe extern "C" fn(Option<MeterCb>, *mut std::ffi::c_void)> =
+            sym(b"ace_set_meter_callback\0")?;
+        set_meter(None, std::ptr::null_mut());
+
+        type PosCb = unsafe extern "C" fn(u64, *mut std::ffi::c_void);
+        let set_pos: Symbol<unsafe extern "C" fn(Option<PosCb>, *mut std::ffi::c_void)> =
+            sym(b"ace_set_position_callback\0")?;
+        set_pos(None, std::ptr::null_mut());
+
+        type ErrCb = unsafe extern "C" fn(*const i8, *mut std::ffi::c_void);
+        let set_err: Symbol<unsafe extern "C" fn(Option<ErrCb>, *mut std::ffi::c_void)> =
+            sym(b"ace_set_error_callback\0")?;
+        set_err(None, std::ptr::null_mut());
+    }
+
+    eprintln!("[AceBridge] Engine callbacks unregistered");
     Ok(())
 }

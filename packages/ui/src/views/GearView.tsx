@@ -2,9 +2,9 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import {
-  Search, Plus, Headphones, Ear, Speaker, Bluetooth, Trash2,
-  Download, Upload, ChevronDown, ChevronRight, Sliders, BarChart3,
-  Check, X, Zap, FileDown, RotateCcw, Info,
+  Search, Plus, Headphones, Ear, Speaker, Bluetooth,
+  Upload, ChevronDown, ChevronRight, Sliders,
+  X, Zap, FileDown, RotateCcw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getAudioEngine } from '@/lib/audioEngine'
@@ -149,7 +149,7 @@ function FRChart({
     const y = ((ev.clientY - rect.top) / rect.height) * H
 
     let f = Math.min(20000, Math.max(20, freqOfX(Math.min(PAD.left + plotW, Math.max(PAD.left, x)))))
-    let s = Math.min(splMax, Math.max(splMin, splOfY(Math.min(PAD.top + plotH, Math.max(PAD.top, y)))))
+    const s = Math.min(splMax, Math.max(splMin, splOfY(Math.min(PAD.top + plotH, Math.max(PAD.top, y)))))
 
     const next = [...editableAnchors]
     const prevF = dragIdx > 0 ? next[dragIdx - 1].frequencyHz : 20
@@ -407,11 +407,6 @@ export function GearView() {
     return list
   }, [gearList, filterType, searchQuery])
 
-  const handleDelete = useCallback((id: string) => {
-    setGearList(prev => prev.filter(g => g.id !== id))
-    if (selectedId === id) setSelectedId(gearList[0]?.id ?? '')
-  }, [selectedId, gearList])
-
   const handleImportFr = useCallback(async (file: File) => {
     const text = await file.text()
     const lower = file.name.toLowerCase()
@@ -441,21 +436,27 @@ export function GearView() {
 
   useEffect(() => {
     if (!selected) {
-      setFittedBands([])
-      setFitStatus('idle')
-      setFitError('')
-      return
+      const timer = setTimeout(() => {
+        setFittedBands([])
+        setFitStatus('idle')
+        setFitError('')
+      }, 0)
+      return () => clearTimeout(timer)
     }
     if (selected.frFrequencies.length === 0 || selected.frSpl.length === 0 || targetFR.length === 0) {
-      setFittedBands([])
-      setFitStatus('idle')
-      setFitError('')
-      return
+      const timer = setTimeout(() => {
+        setFittedBands([])
+        setFitStatus('idle')
+        setFitError('')
+      }, 0)
+      return () => clearTimeout(timer)
     }
 
     let cancelled = false
-    setFitStatus('running')
-    setFitError('')
+    const statusTimer = setTimeout(() => {
+      setFitStatus('running')
+      setFitError('')
+    }, 0)
 
     audioEngine
       .fitAutoEqBands(
@@ -472,13 +473,15 @@ export function GearView() {
       })
       .catch((err) => {
         if (cancelled) return
-        console.error('Auto-EQ fit failed', err)
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn('Auto-EQ fit failed:', msg)
         setFittedBands([])
         setFitStatus('error')
         setFitError('Failed to compute correction bands from measured FR.')
       })
 
     return () => {
+      clearTimeout(statusTimer)
       cancelled = true
     }
   }, [audioEngine, selected, targetFR])
@@ -801,7 +804,7 @@ export function GearView() {
                 <div className="px-4 pb-3">
                   <EqCorrectionTable gear={selected} targetCurve={targetCurve} customAnchors={customAnchors} fittedBands={fittedBands} />
                   <p className="text-[10px] mt-2" style={{ color: 'var(--ace-text-muted)' }}>
-                    Generated PEQ bands to match selected target curve. Click "Apply to PEQ" to load into the Equalizer.
+                    Generated PEQ bands to match selected target curve. Click Apply to PEQ to load into the Equalizer.
                   </p>
                 </div>
               )}

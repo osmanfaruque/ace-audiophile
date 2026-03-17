@@ -234,9 +234,11 @@ function ElegantPlayer() {
 
   useEffect(() => {
     if (!currentTrack) {
-      setRating(0)
-      setAlbumArtPath(null)
-      return
+      const timer = setTimeout(() => {
+        setRating(0)
+        setAlbumArtPath(null)
+      }, 0)
+      return () => clearTimeout(timer)
     }
     getAudioEngine()
       .getRatings()
@@ -256,7 +258,8 @@ function ElegantPlayer() {
       setRating(v)
       if (!currentTrack) return
       getAudioEngine().setRating(currentTrack.filePath, v).catch((e) => {
-        console.error('[PlayerView] Failed to persist rating:', e)
+        const msg = e instanceof Error ? e.message : String(e)
+        console.warn('[PlayerView] Failed to persist rating:', msg)
       })
     },
     [currentTrack],
@@ -496,8 +499,10 @@ function TechnicalPlayer() {
 
   useEffect(() => {
     if (!t) {
-      setTechnicalRating(0)
-      return
+      const timer = setTimeout(() => {
+        setTechnicalRating(0)
+      }, 0)
+      return () => clearTimeout(timer)
     }
     getAudioEngine()
       .getRatings()
@@ -513,7 +518,8 @@ function TechnicalPlayer() {
       setTechnicalRating(v)
       if (!t) return
       getAudioEngine().setRating(t.filePath, v).catch((e) => {
-        console.error('[PlayerView] Failed to persist technical rating:', e)
+        const msg = e instanceof Error ? e.message : String(e)
+        console.warn('[PlayerView] Failed to persist technical rating:', msg)
       })
     },
     [t],

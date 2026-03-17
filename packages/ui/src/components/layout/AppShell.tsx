@@ -11,17 +11,17 @@ import dynamic from 'next/dynamic'
 import { cn } from '@/lib/utils'
 
 // ── Lazy-load heavy views ──────────────────────────────────
-const PlayerView    = dynamic(() => import('@/views/PlayerView').then(m => ({ default: m.PlayerView })))
-const LibraryView   = dynamic(() => import('@/views/LibraryView').then(m => ({ default: m.LibraryView })))
+const PlayerView = dynamic(() => import('@/views/PlayerView').then(m => ({ default: m.PlayerView })))
+const LibraryView = dynamic(() => import('@/views/LibraryView').then(m => ({ default: m.LibraryView })))
 const EqualizerView = dynamic(() => import('@/views/EqualizerView').then(m => ({ default: m.EqualizerView })))
-const AnalyzerView  = dynamic(() => import('@/views/AnalyzerView').then(m => ({ default: m.AnalyzerView })))
-const TaggerView    = dynamic(() => import('@/views/TaggerView').then(m => ({ default: m.TaggerView })))
-const AbxView       = dynamic(() => import('@/views/AbxView').then(m => ({ default: m.AbxView })))
-const GearView      = dynamic(() => import('@/views/GearView').then(m => ({ default: m.GearView })))
-const RecapView     = dynamic(() => import('@/views/RecapView').then(m => ({ default: m.RecapView })))
-const SettingsView  = dynamic(() => import('@/views/SettingsView').then(m => ({ default: m.SettingsView })))
+const AnalyzerView = dynamic(() => import('@/views/AnalyzerView').then(m => ({ default: m.AnalyzerView })))
+const TaggerView = dynamic(() => import('@/views/TaggerView').then(m => ({ default: m.TaggerView })))
+const AbxView = dynamic(() => import('@/views/AbxView').then(m => ({ default: m.AbxView })))
+const GearView = dynamic(() => import('@/views/GearView').then(m => ({ default: m.GearView })))
+const RecapView = dynamic(() => import('@/views/RecapView').then(m => ({ default: m.RecapView })))
+const SettingsView = dynamic(() => import('@/views/SettingsView').then(m => ({ default: m.SettingsView })))
 const PlaylistsView = dynamic(() => import('@/views/PlaylistsView').then(m => ({ default: m.PlaylistsView })))
-const RadioView     = dynamic(() => import('@/views/RadioView').then(m => ({ default: m.RadioView })))
+const RadioView = dynamic(() => import('@/views/RadioView').then(m => ({ default: m.RadioView })))
 
 // ── Nav structure with groups ─────────────────────────────
 type NavItem = { view: AppView; label: string; Icon: React.FC<{ size?: number; className?: string }> }
@@ -31,29 +31,29 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Music',
     items: [
-      { view: 'player',    label: 'Now Playing', Icon: Music2 },
-      { view: 'library',   label: 'Library',     Icon: Library },
-      { view: 'albums',    label: 'Albums',      Icon: Album },
-      { view: 'artists',   label: 'Artists',     Icon: Mic2 },
-      { view: 'genres',    label: 'Genres',      Icon: Tag },
-      { view: 'playlists', label: 'Playlists',   Icon: ListMusic },
+      { view: 'player', label: 'Now Playing', Icon: Music2 },
+      { view: 'library', label: 'Library', Icon: Library },
+      { view: 'albums', label: 'Albums', Icon: Album },
+      { view: 'artists', label: 'Artists', Icon: Mic2 },
+      { view: 'genres', label: 'Genres', Icon: Tag },
+      { view: 'playlists', label: 'Playlists', Icon: ListMusic },
     ],
   },
   {
     label: 'Tools',
     items: [
-      { view: 'equalizer', label: 'Equalizer',   Icon: Sliders },
-      { view: 'analyzer',  label: 'Analyzer',    Icon: ScanLine },
-      { view: 'tagger',    label: 'Tagger',       Icon: Tags },
-      { view: 'abx',       label: 'ABX Test',    Icon: FlaskConical },
-      { view: 'gear',      label: 'Gear Match',  Icon: Headphones },
+      { view: 'equalizer', label: 'Equalizer', Icon: Sliders },
+      { view: 'analyzer', label: 'Analyzer', Icon: ScanLine },
+      { view: 'tagger', label: 'Tagger', Icon: Tags },
+      { view: 'abx', label: 'ABX Test', Icon: FlaskConical },
+      { view: 'gear', label: 'Gear Match', Icon: Headphones },
     ],
   },
   {
     label: 'Discover',
     items: [
-      { view: 'radio',  label: 'Radio',  Icon: Radio },
-      { view: 'recap',  label: 'Recap',  Icon: BarChart3 },
+      { view: 'radio', label: 'Radio', Icon: Radio },
+      { view: 'recap', label: 'Recap', Icon: BarChart3 },
     ],
   },
   {
@@ -66,21 +66,21 @@ const NAV_GROUPS: NavGroup[] = [
 
 function ViewRenderer({ view }: { view: AppView }) {
   switch (view) {
-    case 'player':    return <PlayerView />
+    case 'player': return <PlayerView />
     case 'library':
     case 'albums':
     case 'artists':
-    case 'genres':    return <LibraryView mode={view} />
+    case 'genres': return <LibraryView mode={view} />
     case 'playlists': return <PlaylistsView />
     case 'equalizer': return <EqualizerView />
-    case 'analyzer':  return <AnalyzerView />
-    case 'tagger':    return <TaggerView />
-    case 'abx':       return <AbxView />
-    case 'gear':      return <GearView />
-    case 'radio':     return <RadioView />
-    case 'recap':     return <RecapView />
-    case 'settings':  return <SettingsView />
-    default:          return <PlayerView />
+    case 'analyzer': return <AnalyzerView />
+    case 'tagger': return <TaggerView />
+    case 'abx': return <AbxView />
+    case 'gear': return <GearView />
+    case 'radio': return <RadioView />
+    case 'recap': return <RecapView />
+    case 'settings': return <SettingsView />
+    default: return <PlayerView />
   }
 }
 

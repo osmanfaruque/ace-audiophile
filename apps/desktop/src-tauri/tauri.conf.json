@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.audiophileace.desktop",
   "build": {
-    "frontendDist": "../../packages/ui/out",
+    "frontendDist": "../../../packages/ui/out",
     "devUrl": "http://localhost:3000",
     "beforeDevCommand": "cd ../../packages/ui && pnpm dev",
     "beforeBuildCommand": "cd ../../packages/ui && pnpm build"

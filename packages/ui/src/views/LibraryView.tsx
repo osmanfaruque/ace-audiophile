@@ -53,6 +53,27 @@ async function openAudioFiles(): Promise<string[]> {
 type SortKey = 'title' | 'artist' | 'album' | 'year' | 'codec' | 'sampleRate' | 'durationMs' | 'playCount' | 'rating'
 type SortDir = 'asc' | 'desc'
 
+function formatErrorMessage(error: unknown): string {
+  if (!error) return 'Unknown error'
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'string') return error
+  if (typeof error === 'object') {
+    const maybe = error as { message?: unknown; kind?: unknown }
+    if (typeof maybe.message === 'string' && maybe.message.trim()) {
+      if (typeof maybe.kind === 'string' && maybe.kind.trim()) {
+        return `${maybe.kind}: ${maybe.message}`
+      }
+      return maybe.message
+    }
+    if (typeof maybe.kind === 'string' && maybe.kind.trim()) return maybe.kind
+  }
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return String(error)
+  }
+}
+
 // ── Star Rating widget ────────────────────────────────────────────────────────
 
 function StarRating({
@@ -87,16 +108,32 @@ function SidePanel({
 }) {
   const mutedColor: React.CSSProperties = { color: 'var(--ace-text-muted)' }
   const borderLine = { borderColor: 'var(--ace-border)' }
+  const genres = useMemo(() => {
+    const map = new Map<string, number>()
+    tracks.forEach((t) => {
+      const g = t.genre || 'Unknown Genre'
+      map.set(g, (map.get(g) ?? 0) + 1)
+    })
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [tracks])
+
+  const albums = useMemo(() => {
+    const map = new Map<string, { album: string; artist: string; count: number }>()
+    tracks.forEach((t) => {
+      const key = t.album
+      if (!map.has(key)) map.set(key, { album: t.album, artist: t.albumArtist || t.artist, count: 0 })
+      map.get(key)!.count++
+    })
+    return Array.from(map.values()).sort((a, b) => a.album.localeCompare(b.album))
+  }, [tracks])
+
+  const artists = useMemo(() => {
+    const map = new Map<string, number>()
+    tracks.forEach((t) => map.set(t.artist, (map.get(t.artist) ?? 0) + 1))
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [tracks])
 
   if (mode === 'genres') {
-    const genres = useMemo(() => {
-      const map = new Map<string, number>()
-      tracks.forEach((t) => {
-        const g = t.genre || 'Unknown Genre'
-        map.set(g, (map.get(g) ?? 0) + 1)
-      })
-      return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
-    }, [tracks])
     return (
       <div className="w-48 shrink-0 flex flex-col border-r overflow-hidden"
         style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)' }}>
@@ -139,15 +176,6 @@ function SidePanel({
   }
 
   if (mode === 'albums') {
-    const albums = useMemo(() => {
-      const map = new Map<string, { album: string; artist: string; count: number }>()
-      tracks.forEach((t) => {
-        const key = t.album
-        if (!map.has(key)) map.set(key, { album: t.album, artist: t.albumArtist || t.artist, count: 0 })
-        map.get(key)!.count++
-      })
-      return Array.from(map.values()).sort((a, b) => a.album.localeCompare(b.album))
-    }, [tracks])
     return (
       <div className="w-48 shrink-0 flex flex-col border-r overflow-hidden"
         style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)' }}>
@@ -189,11 +217,6 @@ function SidePanel({
   }
 
   // Default: artists (library / artists mode)
-  const artists = useMemo(() => {
-    const map = new Map<string, number>()
-    tracks.forEach((t) => map.set(t.artist, (map.get(t.artist) ?? 0) + 1))
-    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
-  }, [tracks])
   return (
     <div className="w-48 shrink-0 flex flex-col border-r overflow-hidden"
       style={{ borderColor: 'var(--ace-border)', background: 'var(--ace-bg-elevated)' }}>
@@ -317,7 +340,7 @@ export function LibraryView({ mode }: { mode: string }) {
       }))
       setTracks(mapped)
     } catch (e) {
-      console.error('[LibraryView] Failed to query DB tracks, falling back to queue:', e)
+      console.warn('[LibraryView] Failed to query DB tracks, falling back to queue:', formatErrorMessage(e))
       setTracks(queueTracks)
     }
   }, [activeFilter, mode, queueTracks, search, sortDir, sortKey])
@@ -336,7 +359,7 @@ export function LibraryView({ mode }: { mode: string }) {
         })
         setRatings(map)
       })
-      .catch((e) => console.error('[LibraryView] Failed to load ratings:', e))
+        .catch((e) => console.warn('[LibraryView] Failed to load ratings:', formatErrorMessage(e)))
   }, [])
 
   // ── Scan handler ─────────────────────────────────────────
@@ -372,7 +395,7 @@ export function LibraryView({ mode }: { mode: string }) {
       appStore.setScanTotal(totalAll)
       await loadDbTracks()
     } catch (e) {
-      console.error('[LibraryView] Scan failed:', e)
+      console.warn('[LibraryView] Scan failed:', formatErrorMessage(e))
     } finally {
       appStore.setIsScanning(false)
     }

@@ -75,6 +75,7 @@ export function EqualizerView() {
   const svgRef  = useRef<SVGSVGElement>(null)
   const dragging = useRef<{ bandId: number; startY: number; startDb: number } | null>(null)
   const [hoveredBand, setHoveredBand] = useState<number | null>(null)
+  const [draggingBandId, setDraggingBandId] = useState<number | null>(null)
   const [presetName, setPresetName] = useState('')
   const [showSaveInput, setShowSaveInput] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -99,6 +100,7 @@ export function EqualizerView() {
       e.preventDefault()
       e.stopPropagation()
       dragging.current = { bandId, startY: e.clientY, startDb: currentDb }
+      setDraggingBandId(bandId)
 
       const onMove = (ev: MouseEvent) => {
         if (!dragging.current) return
@@ -115,6 +117,7 @@ export function EqualizerView() {
 
       const onUp = () => {
         dragging.current = null
+        setDraggingBandId(null)
         window.removeEventListener('mousemove', onMove)
         window.removeEventListener('mouseup', onUp)
       }
@@ -414,7 +417,7 @@ export function EqualizerView() {
             const x = freqToX(band.frequency)
             const y = dbToY(band.gainDb)
             const isHovered = hoveredBand === band.id
-            const isDragged = dragging.current?.bandId === band.id
+            const isDragged = draggingBandId === band.id
 
             return (
               <g key={band.id}>

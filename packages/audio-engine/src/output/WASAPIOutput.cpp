@@ -229,6 +229,7 @@ struct WASAPIImpl {
     HANDLE               stop_event    = nullptr;
     UINT32               buffer_frames = 0;
     int                  channels      = 0;
+    int                  input_channels = 0;
     uint32_t             sample_rate   = 0;
     int                  bit_depth     = 0;   // actual accepted bit depth
     bool                 exclusive     = false;
@@ -340,6 +341,7 @@ struct WASAPIImpl {
     int open(const char* device_id, uint32_t rate, int ch)
     {
         close();
+        input_channels = ch;
 
         HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         com_init = SUCCEEDED(hr);
@@ -501,10 +503,43 @@ struct WASAPIImpl {
     int write(const float* buf, int frames)
     {
         if (!ring || !running.load()) return -1;
-        uint32_t total = static_cast<uint32_t>(frames) * channels;
+
+        std::vector<float> converted;
+        const float* src = buf;
+        uint32_t total = 0;
+
+        if (input_channels == channels) {
+            total = static_cast<uint32_t>(frames) * channels;
+        } else {
+            // Convert channel layout when decoder channels differ from device mix channels.
+            total = static_cast<uint32_t>(frames) * static_cast<uint32_t>(channels);
+            converted.assign(total, 0.0f);
+
+            for (int f = 0; f < frames; ++f) {
+                const float* in = buf + static_cast<size_t>(f) * static_cast<size_t>(input_channels);
+                float* out = converted.data() + static_cast<size_t>(f) * static_cast<size_t>(channels);
+
+                if (input_channels == 1 && channels >= 1) {
+                    const float mono = in[0];
+                    for (int c = 0; c < channels; ++c) out[c] = mono;
+                } else if (input_channels >= 2 && channels == 1) {
+                    out[0] = 0.5f * (in[0] + in[1]);
+                } else if (input_channels >= 2 && channels >= 2) {
+                    out[0] = in[0];
+                    out[1] = in[1];
+                    for (int c = 2; c < channels; ++c) out[c] = 0.0f;
+                } else {
+                    const int copy_ch = std::min(input_channels, channels);
+                    for (int c = 0; c < copy_ch; ++c) out[c] = in[c];
+                }
+            }
+
+            src = converted.data();
+        }
+
         uint32_t written = 0;
         while (written < total && running.load()) {
-            uint32_t n = ring->write(buf + written, total - written);
+            uint32_t n = ring->write(src + written, total - written);
             written += n;
             if (written < total)
                 std::this_thread::sleep_for(std::chrono::microseconds(500));
@@ -560,6 +595,7 @@ struct WASAPIImpl {
         ring.reset();
         buffer_frames = 0;
         channels = 0;
+        input_channels = 0;
         sample_rate = 0;
         bit_depth = 0;
         exclusive = false;
