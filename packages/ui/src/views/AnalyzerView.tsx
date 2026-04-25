@@ -836,8 +836,19 @@ export function AnalyzerView() {
           {/* Canvas area */}
           <div className="flex-1 overflow-hidden p-3" style={{ background: '#050508' }}>
             {activeTab === 'spectrogram' && (
-              <div className="w-full h-full">
-                <SpectrogramCanvas track={track} />
+              <div className="w-full h-full flex flex-col gap-3">
+                <div className="flex-[2] min-h-0 relative">
+                  <div className="absolute top-2 left-2 text-[10px] text-white/40 uppercase tracking-widest z-10 font-medium bg-black/40 px-2 py-0.5 rounded">
+                    Spectrogram
+                  </div>
+                  <SpectrogramCanvas track={track} />
+                </div>
+                <div className="flex-1 min-h-0 relative border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                  <div className="absolute top-2 left-2 text-[10px] text-white/40 uppercase tracking-widest z-10 font-medium bg-black/40 px-2 py-0.5 rounded">
+                    Linear Frequency-Energy
+                  </div>
+                  <SpectrumCanvas track={track} />
+                </div>
               </div>
             )}
             {activeTab === 'waveform' && (

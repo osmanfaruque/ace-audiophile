@@ -12,7 +12,7 @@ import type { AbxSession, AbxTrial } from '@ace/types'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type TestPhase = 'setup' | 'testing' | 'results'
-type PlaybackTarget = 'A' | 'B' | 'X' | null
+type PlaybackTarget = 'A' | 'B' | 'C' | 'X' | null
 type BlindMode = 'open' | 'single' | 'double'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -33,12 +33,13 @@ function fileName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path
 }
 
-/** Binomial test — probability of getting >= k correct in n trials by chance (p=0.5) */
-function binomialPValue(correct: number, total: number): number {
+/** Binomial test — probability of getting >= k correct in n trials by chance (p=1/options) */
+function binomialPValue(correct: number, total: number, optionsCount: number = 2): number {
   if (total === 0) return 1
   let pValue = 0
+  const p = 1.0 / optionsCount
   for (let k = correct; k <= total; k++) {
-    pValue += binomCoeff(total, k) * Math.pow(0.5, total)
+    pValue += binomCoeff(total, k) * Math.pow(p, k) * Math.pow(1 - p, total - k)
   }
   return pValue
 }
@@ -131,7 +132,7 @@ function TrialRow({ trial, index }: { trial: AbxTrial; index: number }) {
       </span>
       <span className="w-20" style={{ color: 'var(--ace-text-secondary)' }}>
         Guessed: <span className="font-bold" style={{ color: 'var(--ace-text-primary)' }}>
-          {trial.userGuessedA ? 'X = A' : 'X = B'}
+          X = {trial.userGuessedTarget}
         </span>
       </span>
       {trial.correct !== null ? (
@@ -160,7 +161,8 @@ function ResultsPanel({ trials, session }: { trials: AbxTrial[]; session: AbxSes
   const total = trials.length
   const correct = trials.filter(t => t.correct).length
   const pct = total > 0 ? Math.round((correct / total) * 100) : 0
-  const pValue = session.pValue ?? binomialPValue(correct, total)
+  const optionsCount = session.fileC ? 3 : 2
+  const pValue = session.pValue ?? binomialPValue(correct, total, optionsCount)
   const conf = getConfidenceLabel(pValue)
   const avgTime = total > 0 ? trials.reduce((s, t) => s + t.responseTimeMs, 0) / total / 1000 : 0
 
@@ -269,6 +271,7 @@ export function AbxView() {
   const [phase, setPhase] = useState<TestPhase>('setup')
   const [fileA, setFileA] = useState<string | null>(null)
   const [fileB, setFileB] = useState<string | null>(null)
+  const [fileC, setFileC] = useState<string | null>(null)
   const [totalTrials, setTotalTrials] = useState(16)
   const [sealed, setSealed] = useState(false)
   const [blindMode, setBlindMode] = useState<BlindMode>('open')
@@ -277,17 +280,18 @@ export function AbxView() {
   const [session, setSession] = useState<AbxSession | null>(null)
   const [trials, setTrials] = useState<AbxTrial[]>([])
   const [currentTrial, setCurrentTrial] = useState(0)
-  const [xIsA, setXIsA] = useState(true)
+  const [xTarget, setXTarget] = useState<'A'|'B'|'C'>('A')
   const [playing, setPlaying] = useState<PlaybackTarget>(null)
   const [trialStartTime, setTrialStartTime] = useState(0)
   const [showFeedback, setShowFeedback] = useState<'correct' | 'wrong' | null>(null)
 
   // ── Pick files ──
-  const pickFile = useCallback(async (which: 'A' | 'B') => {
+  const pickFile = useCallback(async (which: 'A' | 'B' | 'C') => {
     const path = await openAudioFile()
     if (!path) return
     if (which === 'A') setFileA(path)
-    else setFileB(path)
+    else if (which === 'B') setFileB(path)
+    else setFileC(path)
   }, [])
 
   // ── Start session ──
@@ -296,7 +300,7 @@ export function AbxView() {
     const now = Date.now()
     const newSession: AbxSession = {
       id: `abx-${now}`,
-      fileA, fileB,
+      fileA, fileB, fileC: fileC || undefined,
       createdAt: now,
       sealed: blindMode === 'double',
       totalTrials,
@@ -307,11 +311,11 @@ export function AbxView() {
     setSession(newSession)
     setTrials([])
     setCurrentTrial(0)
-    setXIsA(Math.random() < 0.5)
+    setXTarget(fileC ? (['A','B','C'][Math.floor(Math.random() * 3)] as 'A'|'B'|'C') : (Math.random() < 0.5 ? 'A' : 'B'))
     setTrialStartTime(Date.now())
     setPhase('testing')
     setPlaying(null)
-  }, [fileA, fileB, totalTrials, blindMode])
+  }, [fileA, fileB, fileC, totalTrials, blindMode])
 
   // ── Wire playback to real engine (A7.3.4) ──
   const handlePlay = useCallback(async (target: PlaybackTarget) => {
@@ -326,7 +330,12 @@ export function AbxView() {
         let filePath: string | null = null
         if (target === 'A') filePath = fileA
         else if (target === 'B') filePath = fileB
-        else if (target === 'X') filePath = xIsA ? fileA : fileB
+        else if (target === 'C') filePath = fileC
+        else if (target === 'X') {
+          if (xTarget === 'A') filePath = fileA
+          else if (xTarget === 'B') filePath = fileB
+          else filePath = fileC
+        }
 
         if (!filePath) return
 
@@ -340,21 +349,21 @@ export function AbxView() {
       console.error('[ABX] Playback error:', err)
       setPlaying(null)
     }
-  }, [playing, fileA, fileB, xIsA])
+  }, [playing, fileA, fileB, fileC, xTarget])
 
   // ── Submit guess ──
-  const submitGuess = useCallback((guessedA: boolean) => {
+  const submitGuess = useCallback((guessedTarget: 'A'|'B'|'C') => {
     if (!session) return
     const responseTimeMs = Date.now() - trialStartTime
     const isSealed = blindMode === 'double'
-    const correct = isSealed ? null : (guessedA === xIsA)
+    const correct = isSealed ? null : (guessedTarget === xTarget)
 
     const trial: AbxTrial = {
       id: `trial-${session.id}-${currentTrial}`,
       sessionId: session.id,
       trialNumber: currentTrial + 1,
-      xWasA: isSealed ? null : xIsA,
-      userGuessedA: guessedA,
+      xTarget: isSealed ? null : xTarget,
+      userGuessedTarget: guessedTarget,
       correct,
       responseTimeMs,
     }
@@ -373,15 +382,15 @@ export function AbxView() {
     if (nextTrial >= totalTrials) {
       // Session complete
       const correctCount = isSealed ? 0 : newTrials.filter(t => t.correct).length
-      const pValue = isSealed ? null : binomialPValue(correctCount, newTrials.length)
+      const pValue = isSealed ? null : binomialPValue(correctCount, newTrials.length, session.fileC ? 3 : 2)
       setSession(prev => prev ? { ...prev, correctCount, pValue, confidencePct: pValue != null ? Math.round((1 - pValue) * 100) : null } : null)
       setPhase('results')
     } else {
       setCurrentTrial(nextTrial)
-      setXIsA(Math.random() < 0.5)
+      setXTarget(session.fileC ? (['A','B','C'][Math.floor(Math.random() * 3)] as 'A'|'B'|'C') : (Math.random() < 0.5 ? 'A' : 'B'))
       setTrialStartTime(Date.now())
     }
-  }, [session, currentTrial, totalTrials, xIsA, trials, trialStartTime, blindMode])
+  }, [session, currentTrial, totalTrials, xTarget, trials, trialStartTime, blindMode])
 
   // ── Reset ──
   const resetTest = useCallback(async () => {
@@ -553,6 +562,37 @@ export function AbxView() {
                 </div>
                 <FolderOpen size={14} style={{ color: 'var(--ace-text-muted)' }} />
               </button>
+
+              {/* File C (Optional) */}
+              <button
+                onClick={() => pickFile('C')}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg border-2 border-dashed transition-colors hover:bg-white/5"
+                style={{ borderColor: fileC ? 'var(--ace-warning)' : 'var(--ace-border)' }}
+              >
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center font-black text-lg"
+                  style={{ background: '#e0a34f18', color: 'var(--ace-warning)' }}
+                >
+                  C
+                </div>
+                <div className="flex-1 text-left">
+                  {fileC ? (
+                    <>
+                      <div className="text-xs font-medium truncate" style={{ color: 'var(--ace-text-primary)' }}>
+                        {fileName(fileC)}
+                      </div>
+                      <div className="text-[10px] truncate" style={{ color: 'var(--ace-text-muted)' }}>
+                        {fileC}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-xs" style={{ color: 'var(--ace-text-muted)' }}>
+                      Click to select Sample C (Optional 3rd file)
+                    </div>
+                  )}
+                </div>
+                <FolderOpen size={14} style={{ color: 'var(--ace-text-muted)' }} />
+              </button>
             </div>
 
             {/* Settings */}
@@ -712,6 +752,16 @@ export function AbxView() {
               onClick={() => handlePlay('B')}
               color="var(--ace-info)"
             />
+            {fileC && (
+              <PlayButton
+                label="C"
+                sublabel={fileC ? fileName(fileC) : undefined}
+                active={playing === 'C'}
+                playing={playing === 'C'}
+                onClick={() => handlePlay('C')}
+                color="var(--ace-warning)"
+              />
+            )}
             <PlayButton
               label="X"
               sublabel="Mystery sample"
@@ -725,14 +775,14 @@ export function AbxView() {
 
           {/* Instructions */}
           <p className="text-xs text-center max-w-md" style={{ color: 'var(--ace-text-muted)' }}>
-            Listen to <strong>A</strong>, <strong>B</strong>, and <strong>X</strong> as many times as you want.
-            Then decide: is X the same as A, or the same as B?
+            Listen to <strong>A</strong>, <strong>B</strong>{fileC ? ', <strong>C</strong>' : ''}, and <strong>X</strong> as many times as you want.
+            Then decide: which sample matches X?
           </p>
 
           {/* Guess buttons */}
           <div className="flex items-center gap-4">
             <button
-              onClick={() => submitGuess(true)}
+              onClick={() => submitGuess('A')}
               className="flex items-center gap-2 px-8 py-3 rounded-lg text-sm font-bold border-2 transition-all hover:scale-[1.02] active:scale-95"
               style={{ borderColor: 'var(--ace-success)', color: 'var(--ace-success)', background: '#4caf8210' }}
             >
@@ -740,12 +790,24 @@ export function AbxView() {
             </button>
             <span className="text-xs font-medium" style={{ color: 'var(--ace-text-muted)' }}>or</span>
             <button
-              onClick={() => submitGuess(false)}
+              onClick={() => submitGuess('B')}
               className="flex items-center gap-2 px-8 py-3 rounded-lg text-sm font-bold border-2 transition-all hover:scale-[1.02] active:scale-95"
               style={{ borderColor: 'var(--ace-info)', color: 'var(--ace-info)', background: '#4fa3e010' }}
             >
               X = B
             </button>
+            {fileC && (
+              <>
+                <span className="text-xs font-medium" style={{ color: 'var(--ace-text-muted)' }}>or</span>
+                <button
+                  onClick={() => submitGuess('C')}
+                  className="flex items-center gap-2 px-8 py-3 rounded-lg text-sm font-bold border-2 transition-all hover:scale-[1.02] active:scale-95"
+                  style={{ borderColor: 'var(--ace-warning)', color: 'var(--ace-warning)', background: '#e0a34f10' }}
+                >
+                  X = C
+                </button>
+              </>
+            )}
           </div>
         </div>
 

@@ -338,8 +338,8 @@ export interface AbxTrial {
   id: string
   sessionId: string
   trialNumber: number
-  xWasA: boolean | null   // null if sealed/unrevealed
-  userGuessedA: boolean
+  xTarget: 'A' | 'B' | 'C' | null   // null if sealed/unrevealed
+  userGuessedTarget: 'A' | 'B' | 'C'
   correct: boolean | null  // null if sealed
   responseTimeMs: number
 }

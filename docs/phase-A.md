@@ -247,8 +247,8 @@
 - [x] **A7.3.6** Double-blind ABX mode where mapping key stays hidden during session
 - [x] **A7.3.7** Single-blind ABX mode with post-session answer reveal
 - [x] **A7.3.8** ABX session export: JSON + CSV with timestamp/reaction-time log
-- [ ] **A7.3.9** Multi-file blind playlist mode (2-3 versions randomized per session)
-- [ ] **A7.3.10** Linear frequency-energy graph view alongside spectrogram
+- [x] **A7.3.9** Multi-file blind playlist mode (2-3 versions randomized per session)
+- [x] **A7.3.10** Linear frequency-energy graph view alongside spectrogram
 
 ### A7.4 Mastering Comparison
 
