@@ -13,6 +13,7 @@ import type { AbxSession, AbxTrial } from '@ace/types'
 
 type TestPhase = 'setup' | 'testing' | 'results'
 type PlaybackTarget = 'A' | 'B' | 'X' | null
+type BlindMode = 'open' | 'single' | 'double'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -270,6 +271,7 @@ export function AbxView() {
   const [fileB, setFileB] = useState<string | null>(null)
   const [totalTrials, setTotalTrials] = useState(16)
   const [sealed, setSealed] = useState(false)
+  const [blindMode, setBlindMode] = useState<BlindMode>('open')
 
   // Test state
   const [session, setSession] = useState<AbxSession | null>(null)
@@ -296,7 +298,7 @@ export function AbxView() {
       id: `abx-${now}`,
       fileA, fileB,
       createdAt: now,
-      sealed,
+      sealed: blindMode === 'double',
       totalTrials,
       correctCount: 0,
       pValue: null,
@@ -309,30 +311,49 @@ export function AbxView() {
     setTrialStartTime(Date.now())
     setPhase('testing')
     setPlaying(null)
-  }, [fileA, fileB, totalTrials, sealed])
+  }, [fileA, fileB, totalTrials, blindMode])
 
-  // ── Simulate play ──
-  const handlePlay = useCallback((target: PlaybackTarget) => {
-    if (playing === target) {
+  // ── Wire playback to real engine (A7.3.4) ──
+  const handlePlay = useCallback(async (target: PlaybackTarget) => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      if (playing === target) {
+        // Stop current playback
+        setPlaying(null)
+        await invoke('ace_stop')
+      } else {
+        // Determine which file to play
+        let filePath: string | null = null
+        if (target === 'A') filePath = fileA
+        else if (target === 'B') filePath = fileB
+        else if (target === 'X') filePath = xIsA ? fileA : fileB
+
+        if (!filePath) return
+
+        // Stop current, open new file, play
+        await invoke('ace_stop').catch(() => {})
+        await invoke('ace_open_file', { filePath })
+        await invoke('ace_play')
+        setPlaying(target)
+      }
+    } catch (err) {
+      console.error('[ABX] Playback error:', err)
       setPlaying(null)
-      // invoke('abx_stop')
-    } else {
-      setPlaying(target)
-      // invoke('abx_play', { target, xIsA })
     }
-  }, [playing])
+  }, [playing, fileA, fileB, xIsA])
 
   // ── Submit guess ──
   const submitGuess = useCallback((guessedA: boolean) => {
     if (!session) return
     const responseTimeMs = Date.now() - trialStartTime
-    const correct = sealed ? null : (guessedA === xIsA)
+    const isSealed = blindMode === 'double'
+    const correct = isSealed ? null : (guessedA === xIsA)
 
     const trial: AbxTrial = {
       id: `trial-${session.id}-${currentTrial}`,
       sessionId: session.id,
       trialNumber: currentTrial + 1,
-      xWasA: sealed ? null : xIsA,
+      xWasA: isSealed ? null : xIsA,
       userGuessedA: guessedA,
       correct,
       responseTimeMs,
@@ -342,8 +363,8 @@ export function AbxView() {
     setTrials(newTrials)
     setPlaying(null)
 
-    // Show feedback briefly
-    if (!sealed && correct !== null) {
+    // Show feedback in open mode
+    if (blindMode === 'open' && correct !== null) {
       setShowFeedback(correct ? 'correct' : 'wrong')
       setTimeout(() => setShowFeedback(null), 800)
     }
@@ -351,8 +372,8 @@ export function AbxView() {
     const nextTrial = currentTrial + 1
     if (nextTrial >= totalTrials) {
       // Session complete
-      const correctCount = sealed ? 0 : newTrials.filter(t => t.correct).length
-      const pValue = sealed ? null : binomialPValue(correctCount, newTrials.length)
+      const correctCount = isSealed ? 0 : newTrials.filter(t => t.correct).length
+      const pValue = isSealed ? null : binomialPValue(correctCount, newTrials.length)
       setSession(prev => prev ? { ...prev, correctCount, pValue, confidencePct: pValue != null ? Math.round((1 - pValue) * 100) : null } : null)
       setPhase('results')
     } else {
@@ -360,17 +381,71 @@ export function AbxView() {
       setXIsA(Math.random() < 0.5)
       setTrialStartTime(Date.now())
     }
-  }, [session, currentTrial, totalTrials, xIsA, trials, trialStartTime, sealed])
+  }, [session, currentTrial, totalTrials, xIsA, trials, trialStartTime, blindMode])
 
   // ── Reset ──
-  const resetTest = useCallback(() => {
+  const resetTest = useCallback(async () => {
     setPhase('setup')
     setSession(null)
     setTrials([])
     setCurrentTrial(0)
     setPlaying(null)
     setShowFeedback(null)
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('ace_stop').catch(() => {})
+    } catch {}
   }, [])
+
+  // ── Export session (A7.3.8) ──
+  const exportSession = useCallback(async (format: 'json' | 'csv') => {
+    if (!session || trials.length === 0) return
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const { writeTextFile } = await import('@tauri-apps/plugin-fs')
+
+      const ext = format === 'json' ? 'json' : 'csv'
+      const path = await save({
+        defaultPath: `abx-session-${session.id}.${ext}`,
+        filters: [{ name: `${ext.toUpperCase()} file`, extensions: [ext] }],
+      })
+      if (!path) return
+
+      let content: string
+      if (format === 'json') {
+        content = JSON.stringify({
+          session: {
+            id: session.id,
+            fileA: session.fileA,
+            fileB: session.fileB,
+            createdAt: new Date(session.createdAt).toISOString(),
+            blindMode: session.sealed ? 'double' : 'open',
+            totalTrials: session.totalTrials,
+            correctCount: session.correctCount,
+            pValue: session.pValue,
+            confidencePct: session.confidencePct,
+          },
+          trials: trials.map(t => ({
+            trialNumber: t.trialNumber,
+            xWasA: t.xWasA,
+            userGuessedA: t.userGuessedA,
+            correct: t.correct,
+            responseTimeMs: t.responseTimeMs,
+          })),
+        }, null, 2)
+      } else {
+        const header = 'trial,xWasA,guessedA,correct,responseTimeMs'
+        const rows = trials.map(t =>
+          `${t.trialNumber},${t.xWasA ?? ''},${t.userGuessedA},${t.correct ?? ''},${t.responseTimeMs}`
+        )
+        content = [header, ...rows].join('\n')
+      }
+
+      await writeTextFile(path, content)
+    } catch (err) {
+      console.error('[ABX] Export error:', err)
+    }
+  }, [session, trials])
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SETUP PHASE
@@ -508,28 +583,35 @@ export function AbxView() {
                 </div>
               </div>
 
-              {/* Sealed mode */}
+              {/* Blind mode selector (A7.3.6, A7.3.7) */}
               <div className="flex items-center gap-3">
                 <label className="text-xs w-28" style={{ color: 'var(--ace-text-secondary)' }}>
-                  Sealed mode
+                  Blind mode
                 </label>
-                <button
-                  onClick={() => setSealed(!sealed)}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs border transition-colors',
-                    sealed ? 'border-(--ace-warning) bg-(--ace-warning)/10' : 'border-(--ace-border) hover:bg-white/5',
-                  )}
-                  style={{ color: sealed ? 'var(--ace-warning)' : 'var(--ace-text-secondary)' }}
-                >
-                  {sealed ? <Lock size={12} /> : <Unlock size={12} />}
-                  {sealed ? 'Sealed (no feedback)' : 'Open (instant feedback)'}
-                </button>
+                <div className="flex items-center gap-2">
+                  {(['open', 'single', 'double'] as BlindMode[]).map(mode => (
+                    <button
+                      key={mode}
+                      onClick={() => setBlindMode(mode)}
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs border transition-colors',
+                        blindMode === mode ? 'border-(--ace-accent) bg-(--ace-accent)/10' : 'border-(--ace-border) hover:bg-white/5',
+                      )}
+                      style={{ color: blindMode === mode ? 'var(--ace-accent)' : 'var(--ace-text-secondary)' }}
+                    >
+                      {mode === 'double' ? <Lock size={12} /> : mode === 'single' ? <Unlock size={12} /> : <Volume2 size={12} />}
+                      {mode === 'open' ? 'Open' : mode === 'single' ? 'Single-blind' : 'Double-blind'}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <p className="text-[10px] pl-30" style={{ color: 'var(--ace-text-muted)' }}>
-                {sealed
-                  ? 'True double-blind: no feedback during test. Results revealed after all trials.'
-                  : 'You see correct/wrong after each trial. Faster iteration but mild bias risk.'}
+                {blindMode === 'double'
+                  ? 'True double-blind: no feedback during test. Answers revealed after all trials.'
+                  : blindMode === 'single'
+                  ? 'Single-blind: no feedback during test, but answers revealed immediately at the end.'
+                  : 'Open mode: you see correct/wrong after each trial. Fastest iteration but mild bias risk.'}
               </p>
             </div>
 
@@ -571,7 +653,7 @@ export function AbxView() {
             Trial {currentTrial + 1} / {totalTrials}
           </span>
 
-          {!sealed && (
+          {blindMode === 'open' && (
             <div className="flex items-center gap-3 ml-4 text-xs">
               <span style={{ color: 'var(--ace-success)' }}>✓ {correctSoFar}</span>
               <span style={{ color: 'var(--ace-danger)' }}>✗ {wrongSoFar}</span>
@@ -676,7 +758,7 @@ export function AbxView() {
             const t = trials[i]
             let bg = 'var(--ace-border)'
             if (t) {
-              if (sealed) bg = 'var(--ace-text-muted)'
+              if (blindMode !== 'open') bg = 'var(--ace-text-muted)'
               else if (t.correct) bg = 'var(--ace-success)'
               else bg = 'var(--ace-danger)'
             }
@@ -706,6 +788,21 @@ export function AbxView() {
         <Award size={15} style={{ color: 'var(--ace-accent)' }} />
         <span className="text-sm font-semibold">ABX Test Results</span>
         <span className="flex-1" />
+        {/* Export buttons (A7.3.8) */}
+        <button
+          onClick={() => exportSession('json')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border hover:bg-white/5 transition-colors"
+          style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-secondary)' }}
+        >
+          Export JSON
+        </button>
+        <button
+          onClick={() => exportSession('csv')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border hover:bg-white/5 transition-colors"
+          style={{ borderColor: 'var(--ace-border)', color: 'var(--ace-text-secondary)' }}
+        >
+          Export CSV
+        </button>
         <button
           onClick={resetTest}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border hover:bg-white/5 transition-colors"

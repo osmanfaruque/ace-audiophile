@@ -242,11 +242,11 @@
 - [x] **A7.3.1** `ace_analyze_file` Tauri command → `AnalysisResult` JSON
 - [x] **A7.3.2** AnalyzerView wired to real verdicts (replace mock data)
 - [x] **A7.3.3** Real-time spectrogram via `fft-frame` events → canvas heat-map
-- [ ] **A7.3.4** ABX: sample-perfect A/B gapless switching
+- [x] **A7.3.4** ABX: sample-perfect A/B gapless switching
 - [x] **A7.3.5** Export analysis report as JSON
-- [ ] **A7.3.6** Double-blind ABX mode where mapping key stays hidden during session
-- [ ] **A7.3.7** Single-blind ABX mode with post-session answer reveal
-- [ ] **A7.3.8** ABX session export: JSON + CSV with timestamp/reaction-time log
+- [x] **A7.3.6** Double-blind ABX mode where mapping key stays hidden during session
+- [x] **A7.3.7** Single-blind ABX mode with post-session answer reveal
+- [x] **A7.3.8** ABX session export: JSON + CSV with timestamp/reaction-time log
 - [ ] **A7.3.9** Multi-file blind playlist mode (2-3 versions randomized per session)
 - [ ] **A7.3.10** Linear frequency-energy graph view alongside spectrogram
 
