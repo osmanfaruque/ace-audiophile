@@ -105,7 +105,7 @@ static void blend_multi_res(const float* mono, int mono_len, int fft_size, uint8
     }
 }
 
-void Spectrogram::compute(const float* pcm, int frames, int /*sample_rate*/, AceFftFrame& out)
+void Spectrogram::compute(const float* pcm, int frames, int channels, int /*sample_rate*/, AceFftFrame& out)
 {
     std::memset(&out, 0, sizeof(out));
     if (!pcm || frames <= 0) return;
@@ -129,8 +129,8 @@ void Spectrogram::compute(const float* pcm, int frames, int /*sample_rate*/, Ace
 
     constexpr float kInvSqrt2 = 0.70710678118f;
     for (int i = 0; i < n; ++i) {
-        const float l = pcm[i * 2 + 0];
-        const float r = pcm[i * 2 + 1];
+        const float l = pcm[i * channels + 0];
+        const float r = (channels > 1) ? pcm[i * channels + 1] : l;
         left[static_cast<size_t>(i)] = l;
         right[static_cast<size_t>(i)] = r;
         mid[static_cast<size_t>(i)] = (l + r) * kInvSqrt2;

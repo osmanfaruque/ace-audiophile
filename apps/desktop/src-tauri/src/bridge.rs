@@ -371,6 +371,14 @@ pub fn open_file(file_path: &str) -> Result<TrackInfo, BoxError> {
         lufs_integrated: 0.0,
         is_lossy_transcoded: 0,
         effective_bit_depth: 0,
+        dc_offset: 0.0,
+        clipping_count: 0,
+        lossy_confidence: 0,
+        frequency_cutoff_hz: 0,
+        spectral_ceiling_hz: 0,
+        zero_pad_ratio: 0.0,
+        verdict: [0u8; 64],
+        verdict_detail: [0u8; 512],
     };
 
     unsafe {

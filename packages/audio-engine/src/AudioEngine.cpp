@@ -145,7 +145,7 @@ static void audio_thread_func()
         if (g_meter_cb) {
             AceFftFrame  fft{};
             AceLevelMeter lvl{};
-            g_spectrogram.compute(out_ptr, out_frames, out_sr, fft);
+            g_spectrogram.compute(out_ptr, out_frames, fmt.channels, out_sr, fft);
             fft.timestamp_ms = pos;
             Spectrogram::compute_levels(out_ptr, out_frames,
                                         fmt.channels, lvl);
@@ -155,7 +155,7 @@ static void audio_thread_func()
             // Even without callback, keep snapshot current for ace_get_fft_frame
             AceFftFrame  fft{};
             AceLevelMeter lvl{};
-            g_spectrogram.compute(out_ptr, out_frames, out_sr, fft);
+            g_spectrogram.compute(out_ptr, out_frames, fmt.channels, out_sr, fft);
             fft.timestamp_ms = pos;
             Spectrogram::compute_levels(out_ptr, out_frames,
                                         fmt.channels, lvl);
@@ -1066,15 +1066,21 @@ int ace_analyze_file(
         return 0;
     }
 
+    struct ProgressCtx {
+        void (*cb)(float, void*);
+        void* ud;
+    } ctx = { progress_cb, userdata };
+
     // ── Phase 1: DynamicRange (LUFS, DR, true peak, DC offset, clipping) ─────
     // Progress: 0.0 – 0.5
-    auto dr_progress = [&](float p, void*) {
-        if (progress_cb) progress_cb(p * 0.5f, userdata);
+    auto dr_progress = [](float p, void* ud) {
+        auto* c = static_cast<ProgressCtx*>(ud);
+        if (c->cb) c->cb(p * 0.5f, c->ud);
     };
 
     DynamicRange dr_analyzer;
     DynamicRange::Result dr_result{};
-    dr_analyzer.analyze(path, dr_result, dr_progress, nullptr);
+    dr_analyzer.analyze(path, dr_result, dr_progress, &ctx);
 
     out->lufs_integrated  = dr_result.lufs_integrated;
     out->dynamic_range_db = dr_result.dynamic_range_db;
@@ -1084,13 +1090,14 @@ int ace_analyze_file(
 
     // ── Phase 2: BitDepthAnalyzer (effective depth, spectral ceiling) ─────────
     // Progress: 0.5 – 0.75
-    auto bd_progress = [&](float p, void*) {
-        if (progress_cb) progress_cb(0.5f + p * 0.25f, userdata);
+    auto bd_progress = [](float p, void* ud) {
+        auto* c = static_cast<ProgressCtx*>(ud);
+        if (c->cb) c->cb(0.5f + p * 0.25f, c->ud);
     };
 
     BitDepthAnalyzer bd_analyzer;
     BitDepthAnalyzer::Result bd_result{};
-    bd_analyzer.analyze(path, bd_result, bd_progress, nullptr);
+    bd_analyzer.analyze(path, bd_result, bd_progress, &ctx);
 
     out->effective_bit_depth = bd_result.effective_bit_depth;
     out->spectral_ceiling_hz = bd_result.spectral_ceiling_hz;
@@ -1098,13 +1105,14 @@ int ace_analyze_file(
 
     // ── Phase 3: LossyDetector (transcode detection) ─────────────────────────
     // Progress: 0.75 – 0.95
-    auto ld_progress = [&](float p, void*) {
-        if (progress_cb) progress_cb(0.75f + p * 0.2f, userdata);
+    auto ld_progress = [](float p, void* ud) {
+        auto* c = static_cast<ProgressCtx*>(ud);
+        if (c->cb) c->cb(0.75f + p * 0.2f, c->ud);
     };
 
     LossyDetector ld_analyzer;
     LossyDetector::Result ld_result{};
-    ld_analyzer.analyze(path, ld_result, ld_progress, nullptr);
+    ld_analyzer.analyze(path, ld_result, ld_progress, &ctx);
 
     out->is_lossy_transcoded = ld_result.is_lossy_transcode ? 1 : 0;
     out->lossy_confidence    = ld_result.confidence;

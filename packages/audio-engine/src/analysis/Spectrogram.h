@@ -9,9 +9,9 @@ public:
     Spectrogram();
     ~Spectrogram();
 
-    /** Run Short-Time Fourier Transform on interleaved stereo PCM.
+    /** Run Short-Time Fourier Transform on interleaved PCM.
      *  Returns an AceFftFrame populated with per-channel magnitude bins. */
-    void compute(const float* pcm, int frames, int sample_rate, AceFftFrame& out);
+    void compute(const float* pcm, int frames, int channels, int sample_rate, AceFftFrame& out);
 
     /** Compute peak & RMS level meter from interleaved stereo PCM. */
     static void compute_levels(const float* pcm, int frames, int channels, AceLevelMeter& out);
