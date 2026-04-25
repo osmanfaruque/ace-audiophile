@@ -38,6 +38,8 @@ public:
     double   ratio()             const;
     int      max_output_frames(int in_frames) const;
     uint32_t output_rate()       const { return m_out_hz; }
+    uint32_t in_hz()             const { return m_in_hz; }
+    int      channels()          const { return m_channels; }
 
 private:
     void destroy();

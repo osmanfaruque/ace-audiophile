@@ -233,6 +233,7 @@ struct WASAPIImpl {
     uint32_t             sample_rate   = 0;
     int                  bit_depth     = 0;   // actual accepted bit depth
     bool                 exclusive     = false;
+    bool                 is_float      = false;
     bool                 com_init      = false;
     std::thread          render_thread;
     std::unique_ptr<SpscRingBuffer> ring;
@@ -416,6 +417,7 @@ struct WASAPIImpl {
         channels    = ch;
         sample_rate = wfx.Format.nSamplesPerSec;
         bit_depth   = wfx.Samples.wValidBitsPerSample;
+        is_float    = (wfx.SubFormat == kKSDATA_Float);
 
         return finalize_init();
     }
@@ -458,8 +460,10 @@ struct WASAPIImpl {
         if (mix_fmt->wFormatTag == WAVE_FORMAT_EXTENSIBLE && mix_fmt->cbSize >= 22) {
             auto* ext = reinterpret_cast<WAVEFORMATEXTENSIBLE*>(mix_fmt);
             bit_depth = ext->Samples.wValidBitsPerSample;
+            is_float  = (ext->SubFormat == kKSDATA_Float);
         } else {
             bit_depth = mix_fmt->wBitsPerSample;
+            is_float  = (mix_fmt->wFormatTag == WAVE_FORMAT_IEEE_FLOAT);
         }
 
         CoTaskMemFree(mix_fmt);
@@ -555,7 +559,8 @@ struct WASAPIImpl {
         HANDLE task = AvSetMmThreadCharacteristicsW(L"Pro Audio", &taskIndex);
 
         HANDLE events[2] = {stop_event, buffer_event};
-        const uint32_t frame_floats = buffer_frames * static_cast<uint32_t>(channels);
+        const uint32_t frame_samples = buffer_frames * static_cast<uint32_t>(channels);
+        std::vector<float> read_buf(frame_samples);
 
         while (running.load(std::memory_order_relaxed)) {
             DWORD wait = WaitForMultipleObjects(2, events, FALSE, 2000);
@@ -566,13 +571,59 @@ struct WASAPIImpl {
             HRESULT hr = render_client->GetBuffer(buffer_frames, &data);
             if (FAILED(hr)) continue;
 
-            uint32_t got = ring->read(reinterpret_cast<float*>(data), frame_floats);
-            if (got < frame_floats)
-                std::memset(reinterpret_cast<float*>(data) + got, 0,
-                            (frame_floats - got) * sizeof(float));
+            uint32_t got = ring->read(read_buf.data(), frame_samples);
+            
+            // Convert float ring samples to target WASAPI format
+            if (is_float && bit_depth == 32) {
+                std::memcpy(data, read_buf.data(), got * sizeof(float));
+                if (got < frame_samples)
+                    std::memset(data + got * sizeof(float), 0, (frame_samples - got) * sizeof(float));
+            } 
+            else if (!is_float && bit_depth == 16) {
+                int16_t* dst = reinterpret_cast<int16_t*>(data);
+                for (uint32_t i = 0; i < got; ++i) {
+                    float s = std::clamp(read_buf[i], -1.0f, 1.0f);
+                    dst[i] = static_cast<int16_t>(s * 32767.0f);
+                }
+                if (got < frame_samples)
+                    std::memset(dst + got, 0, (frame_samples - got) * sizeof(int16_t));
+            }
+            else if (!is_float && (bit_depth == 24 || bit_depth == 32)) {
+                // Handle 24-bit (packed or in 32-bit container) and 32-bit int
+                // We use 32-bit container if wBitsPerSample == 32
+                WAVEFORMATEX* wfx = nullptr;
+                audio_client->GetMixFormat(&wfx);
+                int container_bits = wfx ? wfx->wBitsPerSample : (bit_depth == 24 ? 24 : 32);
+                if (wfx) CoTaskMemFree(wfx);
 
-            DWORD flags = (got == 0) ? AUDCLNT_BUFFERFLAGS_SILENT : 0;
-            render_client->ReleaseBuffer(buffer_frames, flags);
+                if (container_bits == 32) {
+                    int32_t* dst = reinterpret_cast<int32_t*>(data);
+                    float scale = (bit_depth == 24) ? 8388607.0f : 2147483647.0f;
+                    int shift = (bit_depth == 24) ? 8 : 0; // Some 24-bit in 32-bit need shift
+                    for (uint32_t i = 0; i < got; ++i) {
+                        float s = std::clamp(read_buf[i], -1.0f, 1.0f);
+                        dst[i] = static_cast<int32_t>(s * scale) << shift;
+                    }
+                    if (got < frame_samples)
+                        std::memset(dst + got, 0, (frame_samples - got) * sizeof(int32_t));
+                } else if (container_bits == 24) {
+                    uint8_t* dst = reinterpret_cast<uint8_t*>(data);
+                    for (uint32_t i = 0; i < got; ++i) {
+                        float s = std::clamp(read_buf[i], -1.0f, 1.0f);
+                        int32_t val = static_cast<int32_t>(s * 8388607.0f);
+                        dst[i * 3 + 0] = static_cast<uint8_t>(val & 0xFF);
+                        dst[i * 3 + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
+                        dst[i * 3 + 2] = static_cast<uint8_t>((val >> 16) & 0xFF);
+                    }
+                    if (got < frame_samples)
+                        std::memset(dst + got * 3, 0, (frame_samples - got) * 3);
+                }
+            } else {
+                // Fallback: silence or direct copy if unknown
+                if (got < frame_samples) std::memset(data, 0, frame_samples * 4); // Guess 4 bytes
+            }
+
+            render_client->ReleaseBuffer(buffer_frames, got == 0 ? AUDCLNT_BUFFERFLAGS_SILENT : 0);
         }
 
         if (task) AvRevertMmThreadCharacteristics(task);

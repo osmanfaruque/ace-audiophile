@@ -43,12 +43,7 @@ void DspChain::apply(const AceDspState& state)
         m_channel_mixer.configure(false, false, 0.0f, false, false);
 
     // Resampler (libsoxr VHQ)
-    if (state.resampler_enabled && state.resampler_target_hz > 0)
-        m_resampler.configure(static_cast<uint32_t>(m_sample_rate),
-                              state.resampler_target_hz, 2);
-    else
-        m_resampler.configure(static_cast<uint32_t>(m_sample_rate),
-                              static_cast<uint32_t>(m_sample_rate), 2); // passthrough
+    // Dynamic configuration in process() based on actual channels
 
     // Dither (TPDF + noise shaping)
     if (state.dither_enabled)
@@ -72,9 +67,6 @@ void DspChain::set_sample_rate(float sr)
         m_crossfeed.configure(m_state.crossfeed_strength, m_sample_rate);
     if (m_configured && m_state.spatializer_enabled)
         m_spatializer.configure(m_state.spatializer_strength, m_sample_rate);
-    if (m_configured && m_state.resampler_enabled && m_state.resampler_target_hz > 0)
-        m_resampler.configure(static_cast<uint32_t>(m_sample_rate),
-                              m_state.resampler_target_hz, 2);
 }
 
 float DspChain::output_sample_rate() const
@@ -135,12 +127,21 @@ int DspChain::process(float* buf, int frames, int channels)
     int    out_frames = frames;
     float* out_ptr    = buf;
 
-    if (m_state.resampler_enabled && m_resampler.active()) {
-        int max_out = m_resampler.max_output_frames(frames);
-        m_resample_buf.resize(static_cast<size_t>(max_out * channels));
-        out_frames = m_resampler.process(buf, frames,
-                                         m_resample_buf.data(), max_out);
-        out_ptr = m_resample_buf.data();
+    if (m_state.resampler_enabled && m_state.resampler_target_hz > 0) {
+        if (!m_resampler.active() || m_resampler.channels() != channels || m_resampler.in_hz() != static_cast<uint32_t>(m_sample_rate)) {
+            m_resampler.configure(static_cast<uint32_t>(m_sample_rate), m_state.resampler_target_hz, channels);
+        }
+        if (m_resampler.active()) {
+            int max_out = m_resampler.max_output_frames(frames);
+            m_resample_buf.resize(static_cast<size_t>(max_out * channels));
+            out_frames = m_resampler.process(buf, frames,
+                                             m_resample_buf.data(), max_out);
+            out_ptr = m_resample_buf.data();
+        }
+    } else {
+        if (m_resampler.active()) {
+            m_resampler.configure(static_cast<uint32_t>(m_sample_rate), static_cast<uint32_t>(m_sample_rate), channels);
+        }
     }
 
     // 5. Dither (TPDF) — applied to (potentially resampled) output
