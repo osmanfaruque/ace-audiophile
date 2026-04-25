@@ -9,7 +9,7 @@
 
 | Phase | Platform | Status | Doc |
 |---|---|---|---|
-| **A** | Windows Desktop | 🔄 Next | [phase-A.md](phase-A.md) |
+| **A** | Windows Desktop | 🔄 In Progress | [phase-A.md](phase-A.md) |
 | **B** | Android | ⬜ Queued | [phase-B.md](phase-B.md) |
 | **C** | Linux Desktop | ⬜ Queued | [phase-C.md](phase-C.md) |
 
@@ -87,7 +87,7 @@ Rules:
 
 ## Completed Work (Pre-Phase A)
 
-All **UI views** implemented and type-check clean (commit `63b11a3`):
+All **UI views** implemented and type-check clean (commit `63b11a3`, latest `105cb7a`):
 
 - ✅ PlayerView (Elegant + Technical modes, lyrics panel, star ratings)
 - ✅ EqualizerView (60-band interactive SVG PEQ)
@@ -100,5 +100,5 @@ All **UI views** implemented and type-check clean (commit `63b11a3`):
 - ✅ RecapView (stats, heatmaps, ranked charts)
 - ✅ SettingsView (6-tab settings, themes, audio config)
 - ✅ RadioView (stub — full implementation in Phase A6/B6/C6)
-- ✅ AppShell (sidebar, routing, 14 views)
+- ✅ AppShell (sidebar, routing, 11 views)
 - ✅ 4 Zustand stores (app, playback, dsp, playlist)

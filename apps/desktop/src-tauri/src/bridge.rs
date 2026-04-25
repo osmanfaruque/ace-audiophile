@@ -296,6 +296,14 @@ struct CAceFileAnalysis {
     lufs_integrated: f32,
     is_lossy_transcoded: u8,
     effective_bit_depth: u8,
+    dc_offset: f32,
+    clipping_count: u64,
+    lossy_confidence: i32,
+    frequency_cutoff_hz: u32,
+    spectral_ceiling_hz: u32,
+    zero_pad_ratio: f32,
+    verdict: [u8; 64],
+    verdict_detail: [u8; 512],
 }
 
 #[repr(C)]
@@ -619,6 +627,14 @@ pub async fn analyze_file(app: &AppHandle, file_path: &str) -> Result<FileAnalys
         lufs_integrated: 0.0,
         is_lossy_transcoded: 0,
         effective_bit_depth: 0,
+        dc_offset: 0.0,
+        clipping_count: 0,
+        lossy_confidence: 0,
+        frequency_cutoff_hz: 0,
+        spectral_ceiling_hz: 0,
+        zero_pad_ratio: 0.0,
+        verdict: [0u8; 64],
+        verdict_detail: [0u8; 512],
     };
 
     let ret = unsafe {
@@ -662,6 +678,15 @@ pub async fn analyze_file(app: &AppHandle, file_path: &str) -> Result<FileAnalys
         }
     };
 
+    let verdict_str = CStr::from_bytes_until_nul(&c_analysis.verdict)
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let verdict_detail_str = CStr::from_bytes_until_nul(&c_analysis.verdict_detail)
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+
     app.emit("ace://analysis-progress", 100u8).ok();
 
     Ok(FileAnalysisResult {
@@ -676,22 +701,15 @@ pub async fn analyze_file(app: &AppHandle, file_path: &str) -> Result<FileAnalys
             && c_analysis.effective_bit_depth < c_analysis.bit_depth,
         lsb_histogram: vec![],
         is_lossy_transcode: c_analysis.is_lossy_transcoded != 0,
-        lossy_confidence: if c_analysis.is_lossy_transcoded != 0 { 80 } else { 0 },
-        frequency_cutoff_hz: None,
-        sbr: false,
-        verdict: if c_analysis.is_lossy_transcoded != 0 {
-            "lossy_transcode".into()
+        lossy_confidence: c_analysis.lossy_confidence as u32,
+        frequency_cutoff_hz: if c_analysis.frequency_cutoff_hz > 0 {
+            Some(c_analysis.frequency_cutoff_hz)
         } else {
-            "genuine".into()
+            None
         },
-        verdict_explanation: format!(
-            "{} {}kHz/{}bit, DR={:.1}dB, LUFS={:.1}",
-            codec,
-            c_analysis.sample_rate / 1000,
-            c_analysis.bit_depth,
-            c_analysis.dynamic_range_db,
-            c_analysis.lufs_integrated
-        ),
+        sbr: false,
+        verdict: verdict_str,
+        verdict_explanation: verdict_detail_str,
         dr_value: c_analysis.dynamic_range_db as f64,
         lufs_integrated: c_analysis.lufs_integrated as f64,
         lufs_range: 0.0,
@@ -702,9 +720,187 @@ pub async fn analyze_file(app: &AppHandle, file_path: &str) -> Result<FileAnalys
     })
 }
 
-pub fn generate_spectrogram(_file_path: &str, _channel_index: u32) -> Result<Vec<f32>, BoxError> {
-    // Will be wired when A7 analyzer is implemented
-    Ok(vec![])
+pub fn generate_spectrogram(_file_path: &str, channel_index: u32) -> Result<Vec<f32>, BoxError> {
+    // Wire to real spectrogram ring buffer via ace_get_spectrogram_channel
+    let c_path = CString::new(_file_path)?;
+    let max_frames = 256;
+    let bins_per_frame = 2048;
+    let capacity = max_frames * bins_per_frame;
+    let mut out_bins = vec![0.0f32; capacity];
+    let mut out_frames: i32 = 0;
+    let mut out_bpf: i32 = 0;
+
+    let rc = unsafe {
+        let ace_get_spec: Symbol<
+            unsafe extern "C" fn(u8, *mut f32, i32, *mut i32, *mut i32) -> i32,
+        > = sym(b"ace_get_spectrogram_channel\0")?;
+        ace_get_spec(
+            channel_index as u8,
+            out_bins.as_mut_ptr(),
+            max_frames as i32,
+            &mut out_frames,
+            &mut out_bpf,
+        )
+    };
+
+    if rc != 0 || out_frames == 0 {
+        return Ok(vec![]);
+    }
+
+    let total = (out_frames * out_bpf) as usize;
+    out_bins.truncate(total);
+    Ok(out_bins)
+}
+
+// ── Container Inspector (A7.2.7) ─────────────────────────────
+
+pub fn get_container_info(file_path: &str) -> Result<serde_json::Value, BoxError> {
+    let c_path = CString::new(file_path)?;
+
+    #[repr(C)]
+    struct CAceChunkEntry {
+        id: [u8; 16],
+        offset: u64,
+        size: u64,
+        description: [u8; 128],
+    }
+
+    #[repr(C)]
+    struct CAceContainerInfo {
+        format: [u8; 32],
+        chunk_count: u32,
+        chunks: [CAceChunkEntry; 64],
+        file_size: u64,
+        has_padding: u8,
+        detail: [u8; 512],
+    }
+
+    let mut info: CAceContainerInfo = unsafe { std::mem::zeroed() };
+
+    let rc = unsafe {
+        let ace_get_ci: Symbol<
+            unsafe extern "C" fn(*const i8, *mut CAceContainerInfo) -> i32,
+        > = sym(b"ace_get_container_info\0")?;
+        ace_get_ci(c_path.as_ptr(), &mut info)
+    };
+
+    if rc != 0 {
+        return Err(format!("ace_get_container_info failed (code {rc})").into());
+    }
+
+    let format = CStr::from_bytes_until_nul(&info.format)
+        .unwrap_or_default().to_string_lossy().into_owned();
+    let detail = CStr::from_bytes_until_nul(&info.detail)
+        .unwrap_or_default().to_string_lossy().into_owned();
+
+    let mut chunks = Vec::new();
+    for i in 0..info.chunk_count as usize {
+        let c = &info.chunks[i];
+        let id = CStr::from_bytes_until_nul(&c.id)
+            .unwrap_or_default().to_string_lossy().into_owned();
+        let desc = CStr::from_bytes_until_nul(&c.description)
+            .unwrap_or_default().to_string_lossy().into_owned();
+        chunks.push(serde_json::json!({
+            "id": id,
+            "offset": c.offset,
+            "size": c.size,
+            "description": desc
+        }));
+    }
+
+    Ok(serde_json::json!({
+        "format": format,
+        "file_size": info.file_size,
+        "chunk_count": info.chunk_count,
+        "has_padding": info.has_padding != 0,
+        "chunks": chunks,
+        "detail": detail
+    }))
+}
+
+// ── Hex Viewer (A7.2.8) ──────────────────────────────────────
+
+pub fn read_file_hex(file_path: &str, offset: u64, length: u32) -> Result<Vec<u8>, BoxError> {
+    let c_path = CString::new(file_path)?;
+    let cap = length.min(65536) as usize;
+    let mut buf = vec![0u8; cap];
+    let mut out_read: u32 = 0;
+
+    let rc = unsafe {
+        let ace_hex: Symbol<
+            unsafe extern "C" fn(*const i8, u64, u32, *mut u8, *mut u32) -> i32,
+        > = sym(b"ace_read_file_hex\0")?;
+        ace_hex(c_path.as_ptr(), offset, length, buf.as_mut_ptr(), &mut out_read)
+    };
+
+    if rc != 0 {
+        return Err(format!("ace_read_file_hex failed (code {rc})").into());
+    }
+
+    buf.truncate(out_read as usize);
+    Ok(buf)
+}
+
+// ── Alignment Validator (A7.2.9) ─────────────────────────────
+
+pub fn validate_alignment(file_path: &str) -> Result<serde_json::Value, BoxError> {
+    let c_path = CString::new(file_path)?;
+
+    #[repr(C)]
+    struct CAceAlignmentResult {
+        valid: u8,
+        error_count: u32,
+        issues: [[u8; 256]; 4],
+    }
+
+    let mut result: CAceAlignmentResult = unsafe { std::mem::zeroed() };
+
+    let rc = unsafe {
+        let ace_va: Symbol<
+            unsafe extern "C" fn(*const i8, *mut CAceAlignmentResult) -> i32,
+        > = sym(b"ace_validate_alignment\0")?;
+        ace_va(c_path.as_ptr(), &mut result)
+    };
+
+    if rc != 0 {
+        return Err(format!("ace_validate_alignment failed (code {rc})").into());
+    }
+
+    let mut issues = Vec::new();
+    for i in 0..result.error_count.min(4) as usize {
+        let s = CStr::from_bytes_until_nul(&result.issues[i])
+            .unwrap_or_default().to_string_lossy().into_owned();
+        if !s.is_empty() { issues.push(s); }
+    }
+
+    Ok(serde_json::json!({
+        "valid": result.valid != 0,
+        "error_count": result.error_count,
+        "issues": issues
+    }))
+}
+
+// ── Export Analysis JSON (A7.3.5) ────────────────────────────
+
+pub fn export_analysis_json(file_path: &str) -> Result<String, BoxError> {
+    let c_path = CString::new(file_path)?;
+    let mut buf = vec![0i8; 16384];
+
+    let rc = unsafe {
+        let ace_export: Symbol<
+            unsafe extern "C" fn(*const i8, *mut i8, i32) -> i32,
+        > = sym(b"ace_export_analysis_json\0")?;
+        ace_export(c_path.as_ptr(), buf.as_mut_ptr(), buf.len() as i32)
+    };
+
+    if rc != 0 {
+        return Err(format!("ace_export_analysis_json failed (code {rc})").into());
+    }
+
+    let json = unsafe { CStr::from_ptr(buf.as_ptr()) }
+        .to_string_lossy()
+        .into_owned();
+    Ok(json)
 }
 
 pub async fn compare_mastering(
@@ -1121,22 +1317,27 @@ unsafe extern "C" fn error_callback(
 
 /// Register all C engine callbacks. Called once after ace_init().
 fn register_engine_callbacks() -> Result<(), BoxError> {
-    unsafe {
-        // A2.3.1 + A2.3.2 — Meter callback (FFT + level)
-        type MeterCb = unsafe extern "C" fn(
-            *const CAceFftFrame,
-            *const CAceLevelMeter,
-            *mut std::ffi::c_void,
-        );
-        let set_meter: Symbol<unsafe extern "C" fn(MeterCb, *mut std::ffi::c_void)> =
-            sym(b"ace_set_meter_callback\0")?;
-        set_meter(meter_callback, std::ptr::null_mut());
+    // Temporarily force-disable realtime callbacks to avoid Win dev heap corruption.
+    let enable_rt_callbacks = false;
 
-        // A2.3.3 — Position callback
-        type PosCb = unsafe extern "C" fn(u64, *mut std::ffi::c_void);
-        let set_pos: Symbol<unsafe extern "C" fn(PosCb, *mut std::ffi::c_void)> =
-            sym(b"ace_set_position_callback\0")?;
-        set_pos(position_callback, std::ptr::null_mut());
+    unsafe {
+        if enable_rt_callbacks {
+            // A2.3.1 + A2.3.2 — Meter callback (FFT + level)
+            type MeterCb = unsafe extern "C" fn(
+                *const CAceFftFrame,
+                *const CAceLevelMeter,
+                *mut std::ffi::c_void,
+            );
+            let set_meter: Symbol<unsafe extern "C" fn(MeterCb, *mut std::ffi::c_void)> =
+                sym(b"ace_set_meter_callback\0")?;
+            set_meter(meter_callback, std::ptr::null_mut());
+
+            // A2.3.3 — Position callback
+            type PosCb = unsafe extern "C" fn(u64, *mut std::ffi::c_void);
+            let set_pos: Symbol<unsafe extern "C" fn(PosCb, *mut std::ffi::c_void)> =
+                sym(b"ace_set_position_callback\0")?;
+            set_pos(position_callback, std::ptr::null_mut());
+        }
 
         // A2.3.5 — Error callback
         type ErrCb = unsafe extern "C" fn(*const i8, *mut std::ffi::c_void);
@@ -1145,7 +1346,11 @@ fn register_engine_callbacks() -> Result<(), BoxError> {
         set_err(error_callback, std::ptr::null_mut());
     }
 
-    eprintln!("[AceBridge] Engine callbacks registered (FFT@60Hz, Level@30Hz, Pos@10Hz, Error)");
+    if enable_rt_callbacks {
+        eprintln!("[AceBridge] Engine callbacks registered (FFT@60Hz, Level@30Hz, Pos@10Hz, Error)");
+    } else {
+        eprintln!("[AceBridge] Engine callbacks registered (Error only; set ACE_ENABLE_RT_CALLBACKS=1 to enable realtime meter/position)");
+    }
     Ok(())
 }
 

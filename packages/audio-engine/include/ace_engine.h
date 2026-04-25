@@ -308,10 +308,18 @@ typedef struct AceFileAnalysis {
     uint8_t  channels;
     uint64_t duration_ms;
     float    dynamic_range_db;
-    float    true_peak_dbtp;
+    float    true_peak_dbtp;       /**< 4× oversampled true peak (dBTP) (A7.2.2) */
     float    lufs_integrated;
     uint8_t  is_lossy_transcoded;
-    uint8_t  effective_bit_depth;  /**< fake high-res detection */
+    uint8_t  effective_bit_depth;  /**< fake high-res detection (A7.2.3) */
+    float    dc_offset;            /**< mean of all samples (A7.2.5) */
+    uint64_t clipping_count;       /**< consecutive full-scale runs (A7.2.6) */
+    int      lossy_confidence;     /**< 0–100 lossy transcode confidence (A7.2.4) */
+    uint32_t frequency_cutoff_hz;  /**< spectral cutoff frequency (A7.2.4.1) */
+    uint32_t spectral_ceiling_hz;  /**< energy ceiling frequency (A7.2.3.2) */
+    float    zero_pad_ratio;       /**< fraction of zero-padded LSBs (A7.2.3.1) */
+    char     verdict[64];          /**< "genuine", "lossy_transcode", "suspect" (A7.2.10) */
+    char     verdict_detail[512];  /**< plain-language quality assessment (A7.2.10) */
 } AceFileAnalysis;
 
 #define ACE_MASTERING_DELTA_BINS 128
@@ -506,6 +514,63 @@ int ace_parse_hls_m3u8(const char* m3u8_text, const char* base_url, AceHlsPlayli
 /** Download and stitch HLS segments into a single byte stream file. */
 int ace_download_and_stitch_hls(const AceHlsPlaylist* playlist, const char* output_path,
                                 uint32_t max_segments);
+
+/* ── Container Inspector (A7.2.7) ──────────────────────────────────────────── */
+
+#define ACE_MAX_CHUNKS 64
+
+typedef struct AceChunkEntry {
+    char     id[16];       /**< Chunk ID (e.g. "fmt ", "data", "RIFF") */
+    uint64_t offset;       /**< Byte offset from start of file */
+    uint64_t size;         /**< Chunk size in bytes */
+    char     description[128]; /**< Human-readable description */
+} AceChunkEntry;
+
+typedef struct AceContainerInfo {
+    char     format[32];         /**< e.g. "RIFF/WAVE", "FLAC", "ID3v2.4" */
+    uint32_t chunk_count;
+    AceChunkEntry chunks[ACE_MAX_CHUNKS];
+    uint64_t file_size;
+    uint8_t  has_padding;        /**< Non-zero if chunk padding detected */
+    char     detail[512];        /**< Summary text */
+} AceContainerInfo;
+
+/** Inspect container structure and return chunk layout (A7.2.7).
+ *  Returns 0 on success. */
+int ace_get_container_info(const char* path, AceContainerInfo* out);
+
+/* ── Binary Data Viewer (A7.2.8) ───────────────────────────────────────────── */
+
+/** Read raw bytes from a file for hex display.
+ *  @param path       File path.
+ *  @param offset     Byte offset to start reading.
+ *  @param length     Number of bytes to read (max 65536).
+ *  @param out_buf    Caller-allocated buffer of at least length bytes.
+ *  @param out_read   Actual bytes read.
+ *  @return 0 on success. */
+int ace_read_file_hex(const char* path, uint64_t offset, uint32_t length,
+                     uint8_t* out_buf, uint32_t* out_read);
+
+/* ── Data Alignment Validator (A7.2.9) ─────────────────────────────────────── */
+
+typedef struct AceAlignmentResult {
+    uint8_t  valid;             /**< Non-zero if all checks pass */
+    uint32_t error_count;       /**< Number of alignment issues found */
+    char     issues[4][256];    /**< Up to 4 issue descriptions */
+} AceAlignmentResult;
+
+/** Validate chunk boundary/padding consistency (A7.2.9).
+ *  Returns 0 on success. */
+int ace_validate_alignment(const char* path, AceAlignmentResult* out);
+
+/* ── Analysis Report Export (A7.3.5) ───────────────────────────────────────── */
+
+/** Export a complete analysis report as JSON.
+ *  @param path       Audio file to analyse.
+ *  @param out_json   Caller-allocated buffer for JSON output.
+ *  @param out_cap    Capacity of out_json buffer.
+ *  @return 0 on success, -1 on error, -2 if buffer too small. */
+int ace_export_analysis_json(const char* path, char* out_json, int out_cap);
 
 #ifdef __cplusplus
 }

@@ -23,8 +23,9 @@ if(NOT FFmpeg_FOUND)
 
     if(WIN32)
         # BtbN GPL shared build (Windows x86_64)
+        # D5: Pinned to autobuild-2025-04-01 for reproducible builds
         set(_FFMPEG_URL
-            "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip")
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2025-04-01-12-51/ffmpeg-n7.1-2025-04-01-win64-gpl-shared-7.1.zip")
         set(_FFMPEG_HASH "")  # populated after first download; CMake will still work without it
     else()
         message(FATAL_ERROR
@@ -92,6 +93,14 @@ if(NOT TagLib_FOUND)
     )
     FetchContent_MakeAvailable(taglib)
 endif()
+
+# ── Dependency notes ─────────────────────────────────────────────────────────
+#
+# m3: libbs2b — NOT used. Crossfeed.cpp implements a custom Bauer BS2B algorithm.
+# m4: mysofa  — NOT used. Spatializer.cpp uses simplified M/S widening + Haas delay.
+# m5: Chromaprint — NOT used. AcoustID fingerprinting is done via HTTP API in Rust.
+# m6: PFFFT   — NOT used. Convolver.cpp uses direct time-domain overlap-save convolution.
+#              KissFFT is used for the real-time spectrogram FFT (analysis module).
 
 # ── Source files ──────────────────────────────────────────────────────────────
 set(ACE_SOURCES

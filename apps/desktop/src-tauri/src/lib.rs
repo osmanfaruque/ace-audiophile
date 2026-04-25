@@ -82,6 +82,10 @@ pub fn run() {
             commands::ace_radio_mark_recent,
             commands::ace_radio_load_favorites,
             commands::ace_radio_load_recents,
+            commands::ace_get_container_info,
+            commands::ace_read_file_hex,
+            commands::ace_validate_alignment,
+            commands::ace_export_analysis_json,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Audiophile Ace")

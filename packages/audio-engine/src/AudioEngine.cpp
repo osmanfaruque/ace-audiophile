@@ -5,6 +5,9 @@
 #include "dsp/CrossfadeEngine.h"
 #include "output/AudioOutput.h"
 #include "analysis/Spectrogram.h"
+#include "analysis/BitDepthAnalyzer.h"
+#include "analysis/LossyDetector.h"
+#include "analysis/DynamicRange.h"
 
 #include <fileref.h>
 #include <tag.h>
@@ -1041,218 +1044,118 @@ int ace_analyze_file(
     void (*progress_cb)(float, void*),
     void* userdata)
 {
-    struct Biquad {
-        double b0 = 1.0;
-        double b1 = 0.0;
-        double b2 = 0.0;
-        double a1 = 0.0;
-        double a2 = 0.0;
-        double z1 = 0.0;
-        double z2 = 0.0;
-
-        float process(float x)
-        {
-            const double y = b0 * static_cast<double>(x) + z1;
-            z1 = b1 * static_cast<double>(x) - a1 * y + z2;
-            z2 = b2 * static_cast<double>(x) - a2 * y;
-            return static_cast<float>(y);
-        }
-    };
-
-    auto make_high_pass = [](double fs, double f0, double q) {
-        Biquad biq;
-        const double w0 = 2.0 * 3.14159265358979323846 * f0 / fs;
-        const double cw = std::cos(w0);
-        const double sw = std::sin(w0);
-        const double alpha = sw / (2.0 * q);
-
-        const double b0 = (1.0 + cw) / 2.0;
-        const double b1 = -(1.0 + cw);
-        const double b2 = (1.0 + cw) / 2.0;
-        const double a0 = 1.0 + alpha;
-        const double a1 = -2.0 * cw;
-        const double a2 = 1.0 - alpha;
-
-        biq.b0 = b0 / a0;
-        biq.b1 = b1 / a0;
-        biq.b2 = b2 / a0;
-        biq.a1 = a1 / a0;
-        biq.a2 = a2 / a0;
-        return biq;
-    };
-
-    auto make_high_shelf = [](double fs, double f0, double gain_db) {
-        Biquad biq;
-        const double a = std::pow(10.0, gain_db / 40.0);
-        const double w0 = 2.0 * 3.14159265358979323846 * f0 / fs;
-        const double cw = std::cos(w0);
-        const double sw = std::sin(w0);
-        const double s = 1.0;
-        const double alpha = sw / 2.0 * std::sqrt((a + 1.0 / a) * (1.0 / s - 1.0) + 2.0);
-        const double beta = 2.0 * std::sqrt(a) * alpha;
-
-        const double b0 =    a * ((a + 1.0) + (a - 1.0) * cw + beta);
-        const double b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cw);
-        const double b2 =    a * ((a + 1.0) + (a - 1.0) * cw - beta);
-        const double a0 =         (a + 1.0) - (a - 1.0) * cw + beta;
-        const double a1 =  2.0 * ((a - 1.0) - (a + 1.0) * cw);
-        const double a2 =         (a + 1.0) - (a - 1.0) * cw - beta;
-
-        biq.b0 = b0 / a0;
-        biq.b1 = b1 / a0;
-        biq.b2 = b2 / a0;
-        biq.a1 = a1 / a0;
-        biq.a2 = a2 / a0;
-        return biq;
-    };
-
-    auto bs1770_weight = [](int ch, int total_channels) {
-        if (total_channels >= 6 && ch == 3) {
-            // Typical 5.1 order keeps LFE at index 3; BS.1770 excludes it.
-            return 0.0;
-        }
-        return 1.0;
-    };
-
     if (!path || !out) return -1;
+    std::memset(out, 0, sizeof(*out));
 
-    ace::FFmpegDecoder analyzer;
-    if (analyzer.open(path) != 0)
-        return -1;
+    // Populate format info from decoder
+    ace::FFmpegDecoder probe;
+    if (probe.open(path) != 0) return -1;
 
-    const auto& fmt = analyzer.format();
+    const auto& fmt = probe.format();
     std::strncpy(out->codec, fmt.codec_name, sizeof(out->codec) - 1);
     out->sample_rate         = fmt.sample_rate;
     out->bit_depth           = fmt.bit_depth;
     out->channels            = fmt.channels;
     out->duration_ms         = fmt.duration_ms;
-    out->dynamic_range_db    = 0.0f;
-    out->true_peak_dbtp      = 0.0f;
-    out->lufs_integrated     = -23.0f;
-    out->is_lossy_transcoded = 0;
     out->effective_bit_depth = fmt.bit_depth;
+    out->lufs_integrated     = -70.0f;
 
     if (fmt.sample_rate == 0 || fmt.channels == 0) {
+        std::strncpy(out->verdict, "unknown", sizeof(out->verdict) - 1);
         if (progress_cb) progress_cb(1.0f, userdata);
         return 0;
     }
 
-    std::vector<Biquad> hp_filters(fmt.channels);
-    std::vector<Biquad> hs_filters(fmt.channels);
-    for (uint8_t ch = 0; ch < fmt.channels; ++ch) {
-        hp_filters[ch] = make_high_pass(static_cast<double>(fmt.sample_rate), 38.13547087602444, 0.5003270373238773);
-        hs_filters[ch] = make_high_shelf(static_cast<double>(fmt.sample_rate), 1681.974450955533, 4.0);
+    // ── Phase 1: DynamicRange (LUFS, DR, true peak, DC offset, clipping) ─────
+    // Progress: 0.0 – 0.5
+    auto dr_progress = [&](float p, void*) {
+        if (progress_cb) progress_cb(p * 0.5f, userdata);
+    };
+
+    DynamicRange dr_analyzer;
+    DynamicRange::Result dr_result{};
+    dr_analyzer.analyze(path, dr_result, dr_progress, nullptr);
+
+    out->lufs_integrated  = dr_result.lufs_integrated;
+    out->dynamic_range_db = dr_result.dynamic_range_db;
+    out->true_peak_dbtp   = dr_result.true_peak_dbtp;
+    out->dc_offset        = dr_result.dc_offset;
+    out->clipping_count   = dr_result.clipping_count;
+
+    // ── Phase 2: BitDepthAnalyzer (effective depth, spectral ceiling) ─────────
+    // Progress: 0.5 – 0.75
+    auto bd_progress = [&](float p, void*) {
+        if (progress_cb) progress_cb(0.5f + p * 0.25f, userdata);
+    };
+
+    BitDepthAnalyzer bd_analyzer;
+    BitDepthAnalyzer::Result bd_result{};
+    bd_analyzer.analyze(path, bd_result, bd_progress, nullptr);
+
+    out->effective_bit_depth = bd_result.effective_bit_depth;
+    out->spectral_ceiling_hz = bd_result.spectral_ceiling_hz;
+    out->zero_pad_ratio      = bd_result.zero_pad_ratio;
+
+    // ── Phase 3: LossyDetector (transcode detection) ─────────────────────────
+    // Progress: 0.75 – 0.95
+    auto ld_progress = [&](float p, void*) {
+        if (progress_cb) progress_cb(0.75f + p * 0.2f, userdata);
+    };
+
+    LossyDetector ld_analyzer;
+    LossyDetector::Result ld_result{};
+    ld_analyzer.analyze(path, ld_result, ld_progress, nullptr);
+
+    out->is_lossy_transcoded = ld_result.is_lossy_transcode ? 1 : 0;
+    out->lossy_confidence    = ld_result.confidence;
+    out->frequency_cutoff_hz = ld_result.cutoff_hz;
+
+    // ── Phase 4: Automated verdict generator (A7.2.10) ───────────────────────
+
+    // Aggregate all signals into a plain-language quality assessment
+    std::string verdict;
+    std::string detail;
+
+    if (ld_result.is_lossy_transcode) {
+        verdict = "lossy_transcode";
+        detail = std::string("Lossy transcode detected: ") + ld_result.explanation;
+    } else if (bd_result.is_fake) {
+        verdict = "upsampled";
+        char buf[256];
+        std::snprintf(buf, sizeof(buf),
+            "Fake hi-res: declared %d-bit but effective %d-bit "
+            "(%.1f%% zero-padded LSBs).",
+            bd_result.declared_bit_depth, bd_result.effective_bit_depth,
+            bd_result.zero_pad_ratio * 100.0f);
+        detail = buf;
+    } else {
+        verdict = "genuine";
+        detail = "Genuine lossless audio. ";
     }
 
-    const size_t window_samples = static_cast<size_t>(std::max(1.0, std::round(static_cast<double>(fmt.sample_rate) * 0.400)));
-    const size_t step_samples = static_cast<size_t>(std::max(1.0, std::round(static_cast<double>(fmt.sample_rate) * 0.100)));
-    std::vector<double> window_ring(window_samples, 0.0);
-    size_t ring_pos = 0;
-    size_t ring_fill = 0;
-    double running_sum = 0.0;
-    uint64_t processed_samples = 0;
-
-    std::vector<double> bs1770_blocks;
-    double abs_peak = 0.0;
-    double rms_sum = 0.0;
-    uint64_t rms_count = 0;
-
-    if (progress_cb) progress_cb(0.0f, userdata);
-
-    while (true) {
-        ace::DecodedBuffer buf = analyzer.decode_next_frame();
-        if (buf.frame_count == 0 || !buf.samples) {
-            break;
-        }
-
-        for (uint32_t i = 0; i < buf.frame_count; ++i) {
-            double weighted_power = 0.0;
-            for (uint8_t ch = 0; ch < fmt.channels; ++ch) {
-                const size_t idx = static_cast<size_t>(i) * fmt.channels + ch;
-                const float s = buf.samples[idx];
-                const double sd = static_cast<double>(s);
-                abs_peak = std::max(abs_peak, std::abs(sd));
-                rms_sum += sd * sd;
-                ++rms_count;
-
-                float y = hp_filters[ch].process(s);
-                y = hs_filters[ch].process(y);
-                const double w = bs1770_weight(static_cast<int>(ch), static_cast<int>(fmt.channels));
-                weighted_power += w * static_cast<double>(y) * static_cast<double>(y);
-            }
-
-            if (ring_fill < window_samples) {
-                window_ring[ring_fill++] = weighted_power;
-                running_sum += weighted_power;
-            } else {
-                running_sum += weighted_power - window_ring[ring_pos];
-                window_ring[ring_pos] = weighted_power;
-                ring_pos = (ring_pos + 1) % window_samples;
-            }
-
-            ++processed_samples;
-            if (ring_fill == window_samples) {
-                const uint64_t window_start = processed_samples - window_samples;
-                if ((window_start % step_samples) == 0) {
-                    bs1770_blocks.push_back(running_sum / static_cast<double>(window_samples));
-                }
-            }
-        }
-
-        if (progress_cb && fmt.duration_ms > 0) {
-            const double ms = static_cast<double>(processed_samples) * 1000.0 / static_cast<double>(fmt.sample_rate);
-            const float p = static_cast<float>(std::clamp(ms / static_cast<double>(fmt.duration_ms), 0.0, 0.98));
-            progress_cb(p, userdata);
-        }
+    // Append supplementary notes
+    if (out->clipping_count > 0) {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf),
+            " Clipping detected: %llu run(s).",
+            static_cast<unsigned long long>(out->clipping_count));
+        detail += buf;
+    }
+    if (std::fabs(out->dc_offset) > 0.001f) {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf),
+            " DC offset: %.4f (may indicate recording issue).",
+            out->dc_offset);
+        detail += buf;
+    }
+    if (out->dynamic_range_db < 6.0f && out->dynamic_range_db > 0.01f) {
+        detail += " Very low dynamic range — heavily compressed/limited.";
     }
 
-    // A7.2.1 — BS.1770/EBU R128 integrated LUFS with absolute+relative gating.
-    if (!bs1770_blocks.empty()) {
-        std::vector<double> abs_gated;
-        abs_gated.reserve(bs1770_blocks.size());
-        for (double z : bs1770_blocks) {
-            if (z <= 0.0) continue;
-            const double lkfs = -0.691 + 10.0 * std::log10(z);
-            if (lkfs >= -70.0) {
-                abs_gated.push_back(z);
-            }
-        }
-
-        if (!abs_gated.empty()) {
-            double mean_abs = 0.0;
-            for (double z : abs_gated) mean_abs += z;
-            mean_abs /= static_cast<double>(abs_gated.size());
-
-            const double l_abs = -0.691 + 10.0 * std::log10(std::max(mean_abs, std::numeric_limits<double>::min()));
-            const double rel_gate = l_abs - 10.0;
-
-            double mean_rel = 0.0;
-            size_t rel_count = 0;
-            for (double z : abs_gated) {
-                const double lkfs = -0.691 + 10.0 * std::log10(z);
-                if (lkfs >= rel_gate) {
-                    mean_rel += z;
-                    ++rel_count;
-                }
-            }
-
-            if (rel_count > 0) {
-                mean_rel /= static_cast<double>(rel_count);
-                out->lufs_integrated = static_cast<float>(
-                    -0.691 + 10.0 * std::log10(std::max(mean_rel, std::numeric_limits<double>::min())));
-            }
-        }
-    }
-
-    // A7.2.1 — DR proxy score from crest factor (peak / RMS) across the full file.
-    if (rms_count > 0) {
-        const double rms = std::sqrt(rms_sum / static_cast<double>(rms_count));
-        const double dr = 20.0 * std::log10(std::max(abs_peak, 1e-12) / std::max(rms, 1e-12));
-        out->dynamic_range_db = static_cast<float>(std::max(0.0, dr));
-    }
+    std::strncpy(out->verdict, verdict.c_str(), sizeof(out->verdict) - 1);
+    std::strncpy(out->verdict_detail, detail.c_str(), sizeof(out->verdict_detail) - 1);
 
     if (progress_cb) progress_cb(1.0f, userdata);
-
     return 0;
 }
 
@@ -1522,4 +1425,301 @@ int ace_verify_bitperfect(const char* device_id, AceBitPerfectResult* out)
     std::snprintf(out->detail, sizeof(out->detail), "Not supported on this platform");
     return -1;
 #endif
+}
+
+// ── Container Inspector (A7.2.7) ─────────────────────────────────────────────
+
+int ace_get_container_info(const char* path, AceContainerInfo* out)
+{
+    if (!path || !out) return -1;
+    std::memset(out, 0, sizeof(*out));
+
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) return -1;
+
+    out->file_size = static_cast<uint64_t>(file.tellg());
+    file.seekg(0, std::ios::beg);
+
+    // Read first 12 bytes for format identification
+    uint8_t header[12] = {};
+    file.read(reinterpret_cast<char*>(header), 12);
+    if (file.gcount() < 4) return -2;
+
+    auto read_u32_le = [](const uint8_t* p) -> uint32_t {
+        return static_cast<uint32_t>(p[0])
+             | (static_cast<uint32_t>(p[1]) << 8)
+             | (static_cast<uint32_t>(p[2]) << 16)
+             | (static_cast<uint32_t>(p[3]) << 24);
+    };
+
+    auto read_u32_be = [](const uint8_t* p) -> uint32_t {
+        return (static_cast<uint32_t>(p[0]) << 24)
+             | (static_cast<uint32_t>(p[1]) << 16)
+             | (static_cast<uint32_t>(p[2]) << 8)
+             |  static_cast<uint32_t>(p[3]);
+    };
+
+    // ── RIFF/WAVE parser ─────────────────────────────────────────────────────
+    if (std::memcmp(header, "RIFF", 4) == 0 && std::memcmp(header + 8, "WAVE", 4) == 0) {
+        std::strncpy(out->format, "RIFF/WAVE", sizeof(out->format) - 1);
+
+        // Parse chunks starting at offset 12
+        uint64_t pos = 12;
+        while (pos + 8 <= out->file_size && out->chunk_count < ACE_MAX_CHUNKS) {
+            file.seekg(static_cast<std::streamoff>(pos));
+            uint8_t chunk_hdr[8];
+            file.read(reinterpret_cast<char*>(chunk_hdr), 8);
+            if (file.gcount() < 8) break;
+
+            auto& chunk = out->chunks[out->chunk_count];
+            std::memcpy(chunk.id, chunk_hdr, 4);
+            chunk.id[4] = '\0';
+            chunk.offset = pos;
+            chunk.size = read_u32_le(chunk_hdr + 4);
+
+            // Descriptions for known chunks
+            if (std::memcmp(chunk.id, "fmt ", 4) == 0)
+                std::strncpy(chunk.description, "Format: audio encoding parameters", sizeof(chunk.description) - 1);
+            else if (std::memcmp(chunk.id, "data", 4) == 0)
+                std::strncpy(chunk.description, "Data: PCM audio samples", sizeof(chunk.description) - 1);
+            else if (std::memcmp(chunk.id, "LIST", 4) == 0)
+                std::strncpy(chunk.description, "LIST: metadata container (INFO)", sizeof(chunk.description) - 1);
+            else if (std::memcmp(chunk.id, "fact", 4) == 0)
+                std::strncpy(chunk.description, "Fact: sample count for compressed formats", sizeof(chunk.description) - 1);
+            else if (std::memcmp(chunk.id, "bext", 4) == 0)
+                std::strncpy(chunk.description, "Broadcast extension chunk", sizeof(chunk.description) - 1);
+            else
+                std::strncpy(chunk.description, "Unknown chunk", sizeof(chunk.description) - 1);
+
+            ++out->chunk_count;
+
+            // Chunks are word-aligned (2-byte boundary)
+            uint64_t data_size = chunk.size;
+            if (data_size & 1) { data_size++; out->has_padding = 1; }
+            pos += 8 + data_size;
+        }
+    }
+    // ── FLAC parser ──────────────────────────────────────────────────────────
+    else if (std::memcmp(header, "fLaC", 4) == 0) {
+        std::strncpy(out->format, "FLAC", sizeof(out->format) - 1);
+
+        uint64_t pos = 4;
+        bool last = false;
+        while (!last && pos + 4 <= out->file_size && out->chunk_count < ACE_MAX_CHUNKS) {
+            file.seekg(static_cast<std::streamoff>(pos));
+            uint8_t blk_hdr[4];
+            file.read(reinterpret_cast<char*>(blk_hdr), 4);
+            if (file.gcount() < 4) break;
+
+            last = (blk_hdr[0] & 0x80) != 0;
+            const uint8_t type = blk_hdr[0] & 0x7F;
+            const uint32_t length = (static_cast<uint32_t>(blk_hdr[1]) << 16)
+                                  | (static_cast<uint32_t>(blk_hdr[2]) << 8)
+                                  |  static_cast<uint32_t>(blk_hdr[3]);
+
+            auto& chunk = out->chunks[out->chunk_count];
+            chunk.offset = pos;
+            chunk.size = length;
+
+            static const char* flac_types[] = {
+                "STREAMINFO", "PADDING", "APPLICATION", "SEEKTABLE",
+                "VORBIS_COMMENT", "CUESHEET", "PICTURE"
+            };
+            if (type < 7) {
+                std::strncpy(chunk.id, flac_types[type], sizeof(chunk.id) - 1);
+                if (type == 1) out->has_padding = 1;
+            } else {
+                std::snprintf(chunk.id, sizeof(chunk.id), "BLOCK_%u", type);
+            }
+
+            std::snprintf(chunk.description, sizeof(chunk.description),
+                "FLAC metadata block type %u (%s), %u bytes",
+                type, chunk.id, length);
+
+            ++out->chunk_count;
+            pos += 4 + length;
+        }
+    }
+    // ── ID3v2 header detection ───────────────────────────────────────────────
+    else if (std::memcmp(header, "ID3", 3) == 0) {
+        std::snprintf(out->format, sizeof(out->format), "ID3v2.%u", header[3]);
+
+        auto& chunk = out->chunks[0];
+        std::strncpy(chunk.id, "ID3v2", sizeof(chunk.id) - 1);
+        chunk.offset = 0;
+        // Synchsafe integer size
+        const uint32_t sz = (static_cast<uint32_t>(header[6] & 0x7F) << 21)
+                          | (static_cast<uint32_t>(header[7] & 0x7F) << 14)
+                          | (static_cast<uint32_t>(header[8] & 0x7F) << 7)
+                          |  static_cast<uint32_t>(header[9] & 0x7F);
+        chunk.size = sz + 10;
+        std::snprintf(chunk.description, sizeof(chunk.description),
+            "ID3v2.%u tag header, %u bytes", header[3], static_cast<uint32_t>(chunk.size));
+        out->chunk_count = 1;
+    }
+    else {
+        std::strncpy(out->format, "Unknown", sizeof(out->format) - 1);
+    }
+
+    std::snprintf(out->detail, sizeof(out->detail),
+        "%s container, %u chunk(s), %llu bytes total%s",
+        out->format, out->chunk_count,
+        static_cast<unsigned long long>(out->file_size),
+        out->has_padding ? ", has padding" : "");
+
+    return 0;
+}
+
+// ── Binary Data Viewer (A7.2.8) ──────────────────────────────────────────────
+
+int ace_read_file_hex(const char* path, uint64_t offset, uint32_t length,
+                     uint8_t* out_buf, uint32_t* out_read)
+{
+    if (!path || !out_buf || !out_read) return -1;
+    *out_read = 0;
+
+    // Cap at 64 KB to prevent abuse
+    if (length > 65536) length = 65536;
+
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) return -1;
+
+    const auto file_size = static_cast<uint64_t>(file.tellg());
+    if (offset >= file_size) return 0;
+
+    const uint32_t actual = static_cast<uint32_t>(
+        std::min(static_cast<uint64_t>(length), file_size - offset));
+
+    file.seekg(static_cast<std::streamoff>(offset));
+    file.read(reinterpret_cast<char*>(out_buf), actual);
+    *out_read = static_cast<uint32_t>(file.gcount());
+
+    return 0;
+}
+
+// ── Data Alignment Validator (A7.2.9) ────────────────────────────────────────
+
+int ace_validate_alignment(const char* path, AceAlignmentResult* out)
+{
+    if (!path || !out) return -1;
+    std::memset(out, 0, sizeof(*out));
+    out->valid = 1;
+
+    AceContainerInfo info{};
+    if (ace_get_container_info(path, &info) != 0) {
+        out->valid = 0;
+        out->error_count = 1;
+        std::strncpy(out->issues[0], "Cannot parse container format",
+                     sizeof(out->issues[0]) - 1);
+        return 0;
+    }
+
+    // Check chunk boundaries for RIFF/WAVE
+    if (std::strncmp(info.format, "RIFF/WAVE", 9) == 0) {
+        for (uint32_t i = 0; i < info.chunk_count && out->error_count < 4; ++i) {
+            const auto& c = info.chunks[i];
+            // RIFF chunks must be word-aligned (2-byte boundaries)
+            if (c.offset % 2 != 0) {
+                std::snprintf(out->issues[out->error_count], 256,
+                    "Chunk '%s' at offset %llu is not word-aligned",
+                    c.id, static_cast<unsigned long long>(c.offset));
+                ++out->error_count;
+                out->valid = 0;
+            }
+            // Verify chunk doesn't overflow file
+            if (c.offset + c.size + 8 > info.file_size && i < info.chunk_count - 1) {
+                std::snprintf(out->issues[out->error_count], 256,
+                    "Chunk '%s' size (%llu) exceeds file boundary",
+                    c.id, static_cast<unsigned long long>(c.size));
+                ++out->error_count;
+                out->valid = 0;
+            }
+        }
+    }
+
+    // Check FLAC STREAMINFO presence
+    if (std::strncmp(info.format, "FLAC", 4) == 0) {
+        bool has_streaminfo = false;
+        for (uint32_t i = 0; i < info.chunk_count; ++i) {
+            if (std::strncmp(info.chunks[i].id, "STREAMINFO", 10) == 0) {
+                has_streaminfo = true;
+                if (info.chunks[i].size != 34 && out->error_count < 4) {
+                    std::snprintf(out->issues[out->error_count], 256,
+                        "STREAMINFO block has unexpected size %llu (expected 34)",
+                        static_cast<unsigned long long>(info.chunks[i].size));
+                    ++out->error_count;
+                    out->valid = 0;
+                }
+            }
+        }
+        if (!has_streaminfo && out->error_count < 4) {
+            std::strncpy(out->issues[out->error_count],
+                "Missing mandatory STREAMINFO metadata block",
+                sizeof(out->issues[0]) - 1);
+            ++out->error_count;
+            out->valid = 0;
+        }
+    }
+
+    return 0;
+}
+
+// ── Analysis Report Export (A7.3.5) ──────────────────────────────────────────
+
+int ace_export_analysis_json(const char* path, char* out_json, int out_cap)
+{
+    if (!path || !out_json || out_cap < 64) return -1;
+
+    AceFileAnalysis analysis{};
+    if (ace_analyze_file(path, &analysis, nullptr, nullptr) != 0) return -1;
+
+    AceContainerInfo container{};
+    ace_get_container_info(path, &container);
+
+    AceAlignmentResult alignment{};
+    ace_validate_alignment(path, &alignment);
+
+    // Build JSON manually (no external JSON library dependency)
+    std::ostringstream j;
+    j << "{\n";
+    j << "  \"file\": \"" << path << "\",\n";
+    j << "  \"codec\": \"" << analysis.codec << "\",\n";
+    j << "  \"sample_rate\": " << analysis.sample_rate << ",\n";
+    j << "  \"bit_depth\": " << static_cast<int>(analysis.bit_depth) << ",\n";
+    j << "  \"effective_bit_depth\": " << static_cast<int>(analysis.effective_bit_depth) << ",\n";
+    j << "  \"channels\": " << static_cast<int>(analysis.channels) << ",\n";
+    j << "  \"duration_ms\": " << analysis.duration_ms << ",\n";
+    j << "  \"loudness\": {\n";
+    j << "    \"lufs_integrated\": " << analysis.lufs_integrated << ",\n";
+    j << "    \"dynamic_range_db\": " << analysis.dynamic_range_db << ",\n";
+    j << "    \"true_peak_dbtp\": " << analysis.true_peak_dbtp << "\n";
+    j << "  },\n";
+    j << "  \"quality\": {\n";
+    j << "    \"verdict\": \"" << analysis.verdict << "\",\n";
+    j << "    \"is_lossy_transcoded\": " << (analysis.is_lossy_transcoded ? "true" : "false") << ",\n";
+    j << "    \"lossy_confidence\": " << analysis.lossy_confidence << ",\n";
+    j << "    \"frequency_cutoff_hz\": " << analysis.frequency_cutoff_hz << ",\n";
+    j << "    \"spectral_ceiling_hz\": " << analysis.spectral_ceiling_hz << ",\n";
+    j << "    \"zero_pad_ratio\": " << analysis.zero_pad_ratio << ",\n";
+    j << "    \"dc_offset\": " << analysis.dc_offset << ",\n";
+    j << "    \"clipping_count\": " << analysis.clipping_count << "\n";
+    j << "  },\n";
+    j << "  \"container\": {\n";
+    j << "    \"format\": \"" << container.format << "\",\n";
+    j << "    \"file_size\": " << container.file_size << ",\n";
+    j << "    \"chunk_count\": " << container.chunk_count << ",\n";
+    j << "    \"has_padding\": " << (container.has_padding ? "true" : "false") << "\n";
+    j << "  },\n";
+    j << "  \"alignment\": {\n";
+    j << "    \"valid\": " << (alignment.valid ? "true" : "false") << ",\n";
+    j << "    \"error_count\": " << alignment.error_count << "\n";
+    j << "  },\n";
+    j << "  \"detail\": \"" << analysis.verdict_detail << "\"\n";
+    j << "}";
+
+    const std::string json_str = j.str();
+    if (static_cast<int>(json_str.size()) >= out_cap) return -2;
+    std::strncpy(out_json, json_str.c_str(), static_cast<size_t>(out_cap) - 1);
+    out_json[out_cap - 1] = '\0';
+    return 0;
 }

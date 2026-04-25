@@ -6,32 +6,31 @@
 
 | Platform | Stack |
 |---|---|
-| Desktop (Windows / macOS) | Tauri v2 + Next.js + C++ |
+| Desktop (Windows) | Tauri v2 + Next.js + C++ |
 | Linux | Tauri v2 + Next.js + C++ |
 | Android | Tauri v2 (mobile) + Next.js + C++ NDK |
 
 ## Tech Stack
 
-- **Frontend:** Next.js 15 + TypeScript + Tailwind CSS (shared across all platforms)
-- **Audio Engine:** Pure C++17 (FFmpeg, Oboe, PFFFT, libsoxr, libbs2b, mysofa, TagLib, Chromaprint)
-- **Platform Bridge:** Tauri v2 (Rust bindings to C++ engine via bindgen)
+- **Frontend:** Next.js 15 + TypeScript + Vanilla CSS (shared across all platforms)
+- **Audio Engine:** Pure C++20 (FFmpeg, KissFFT, libsoxr, TagLib)
+- **Platform Bridge:** Tauri v2 (Rust bindings to C++ engine via `libloading` FFI)
 - **Monorepo:** pnpm workspaces + Turborepo
 
 ## Features
 
 - Bit-perfect playback with direct USB DAC access
 - 60-band parametric EQ with 1000+ presets
-- Full DSP chain: crossfeed, virtual surround (HRTF), dithering, noise shaping, compressor, ReplayGain
+- Full DSP chain: crossfeed (custom Bauer), virtual surround (M/S + Haas), dithering, noise shaping, compressor, ReplayGain
 - Dual UI: Elegant mode (art-forward, minimal chrome) + Technical mode (info-dense, data-rich)
 - Per-channel spectrogram with lossy transcoding detection
 - Fake bit-depth detection (16-bit padded to 24-bit)
 - Binary file structure inspector (RIFF chunks, FLAC frames, hex/binary view)
 - Dynamic range meter (TT DR, LUFS, LRA, true peak)
 - Mastering quality comparison between track versions
-- Auto-tagger via AcoustID + MusicBrainz + Chromaprint fingerprinting
+- Auto-tagger via AcoustID + MusicBrainz (HTTP API fingerprinting)
 - ABX blind test mode with binomial statistical significance
 - Gear matching: Auto-EQ from IEM/headphone FR data (3000+ profiles)
-- Streaming: Qobuz (24/192 FLAC)
 - Audio Recap: yearly stats + real-time listening dashboard
 
 ## Structure
@@ -39,7 +38,7 @@
 ```
 audiophile-ace/
 ├── apps/
-│   ├── desktop/     ← Tauri v2 (Windows + macOS)
+│   ├── desktop/     ← Tauri v2 (Windows)
 │   ├── linux/       ← Tauri v2 (Linux)
 │   └── android/     ← Tauri v2 Android
 ├── packages/
@@ -67,9 +66,9 @@ pnpm android:dev
 
 ## Docs
 
-- [Platform: Desktop](docs/platform-desktop.md)
+- [Platform: Windows](docs/platform-windows.md)
 - [Platform: Android](docs/platform-android.md)
 - [Platform: Linux](docs/platform-linux.md)
-- [Phase 1: Audio Engine Core](docs/phase-1.md)
-- [Phase 2: Frontend + Core Player UI](docs/phase-2.md)
-- [Phase 3: Advanced Features](docs/phase-3.md)
+- [Phase A: Windows Desktop](docs/phase-A.md)
+- [Phase B: Android](docs/phase-B.md)
+- [Phase C: Linux Desktop](docs/phase-C.md)

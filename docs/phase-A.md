@@ -223,27 +223,27 @@
 ### A7.2 Analysis Functions (`ace_analyze_file`)
 
 - [x] **A7.2.1** EBU R128 LUFS (ITU-R BS.1770) + DR score
-- [ ] **A7.2.2** True peak detection (4× oversampled)
-- [ ] **A7.2.3** Fake hi-res detector
-  - [ ] **A7.2.3.1** Bit-depth histogram analysis (effective vs stated)
-  - [ ] **A7.2.3.2** Spectral ceiling check (high-freq energy threshold)
-- [ ] **A7.2.4** Lossy transcode detector
-  - [ ] **A7.2.4.1** Spectral cutoff fingerprint (15–20 kHz shelf)
-  - [ ] **A7.2.4.2** Codec chain sniffing (container metadata)
-- [ ] **A7.2.5** DC offset measurement (mean of all samples)
-- [ ] **A7.2.6** Clipping detection (consecutive full-scale sample runs)
-- [ ] **A7.2.7** Container/chunk inspector (RIFF/IFF/ID3/Vorbis block structure)
-- [ ] **A7.2.8** Binary data viewer (hex + bit-plane preview for padded-bit-depth detection)
-- [ ] **A7.2.9** Data-alignment validator (chunk boundary/padding consistency checks)
-- [ ] **A7.2.10** Automated verdict generator — aggregate all signals into plain-language quality assessment (genuine lossless / upsampled / lossy transcode)
+- [x] **A7.2.2** True peak detection (4× oversampled)
+- [x] **A7.2.3** Fake hi-res detector
+  - [x] **A7.2.3.1** Bit-depth histogram analysis (effective vs stated)
+  - [x] **A7.2.3.2** Spectral ceiling check (high-freq energy threshold)
+- [x] **A7.2.4** Lossy transcode detector
+  - [x] **A7.2.4.1** Spectral cutoff fingerprint (15–20 kHz shelf)
+  - [x] **A7.2.4.2** Codec chain sniffing (container metadata)
+- [x] **A7.2.5** DC offset measurement (mean of all samples)
+- [x] **A7.2.6** Clipping detection (consecutive full-scale sample runs)
+- [x] **A7.2.7** Container/chunk inspector (RIFF/IFF/ID3/Vorbis block structure)
+- [x] **A7.2.8** Binary data viewer (hex + bit-plane preview for padded-bit-depth detection)
+- [x] **A7.2.9** Data-alignment validator (chunk boundary/padding consistency checks)
+- [x] **A7.2.10** Automated verdict generator — aggregate all signals into plain-language quality assessment (genuine lossless / upsampled / lossy transcode)
 
 ### A7.3 Integration
 
 - [x] **A7.3.1** `ace_analyze_file` Tauri command → `AnalysisResult` JSON
 - [x] **A7.3.2** AnalyzerView wired to real verdicts (replace mock data)
-- [ ] **A7.3.3** Real-time spectrogram via `fft-frame` events → canvas heat-map
+- [x] **A7.3.3** Real-time spectrogram via `fft-frame` events → canvas heat-map
 - [ ] **A7.3.4** ABX: sample-perfect A/B gapless switching
-- [ ] **A7.3.5** Export analysis report as JSON
+- [x] **A7.3.5** Export analysis report as JSON
 - [ ] **A7.3.6** Double-blind ABX mode where mapping key stays hidden during session
 - [ ] **A7.3.7** Single-blind ABX mode with post-session answer reveal
 - [ ] **A7.3.8** ABX session export: JSON + CSV with timestamp/reaction-time log

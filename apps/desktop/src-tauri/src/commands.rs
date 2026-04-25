@@ -120,8 +120,8 @@ pub struct FileAnalysisResult {
     pub is_fake_bit_depth: bool,
     pub lsb_histogram: Vec<u32>,
     pub is_lossy_transcode: bool,
-    pub lossy_confidence: u8,
-    pub frequency_cutoff_hz: Option<f64>,
+    pub lossy_confidence: u32,
+    pub frequency_cutoff_hz: Option<u32>,
     pub sbr: bool,
     pub verdict: String,
     pub verdict_explanation: String,
@@ -824,4 +824,41 @@ pub async fn ace_radio_load_recents(app: AppHandle, limit: Option<u32>) -> Resul
     let rows = crate::db::load_recent_radio_stations(&app, limit.unwrap_or(30))
         .map_err(|e| AppError::DatabaseFailed(e.to_string()))?;
     Ok(rows.into_iter().map(from_db_radio_station).collect())
+}
+
+// ── A7.2.7 Container Inspector ──────────────────────────────────
+
+#[tauri::command]
+pub async fn ace_get_container_info(_app: AppHandle, file_path: String) -> Result<serde_json::Value, AppError> {
+    crate::bridge::get_container_info(&file_path)
+        .map_err(|e| AppError::AnalysisFailed(e.to_string()))
+}
+
+// ── A7.2.8 Hex Viewer ─────────────────────────────────────────
+
+#[tauri::command]
+pub async fn ace_read_file_hex(
+    _app: AppHandle,
+    file_path: String,
+    offset: u64,
+    length: u32,
+) -> Result<Vec<u8>, AppError> {
+    crate::bridge::read_file_hex(&file_path, offset, length)
+        .map_err(|e| AppError::AnalysisFailed(e.to_string()))
+}
+
+// ── A7.2.9 Alignment Validator ─────────────────────────────────
+
+#[tauri::command]
+pub async fn ace_validate_alignment(_app: AppHandle, file_path: String) -> Result<serde_json::Value, AppError> {
+    crate::bridge::validate_alignment(&file_path)
+        .map_err(|e| AppError::AnalysisFailed(e.to_string()))
+}
+
+// ── A7.3.5 Export Analysis JSON ────────────────────────────────
+
+#[tauri::command]
+pub async fn ace_export_analysis_json(_app: AppHandle, file_path: String) -> Result<String, AppError> {
+    crate::bridge::export_analysis_json(&file_path)
+        .map_err(|e| AppError::AnalysisFailed(e.to_string()))
 }
