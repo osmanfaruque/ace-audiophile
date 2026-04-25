@@ -279,7 +279,7 @@ function SpectrogramCanvas({ track }: { track: AudioTrack | null }) {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) return
 
     const W = canvas.width
@@ -301,49 +301,72 @@ function SpectrogramCanvas({ track }: { track: AudioTrack | null }) {
       return
     }
 
-    // Simulated spectrogram columns (replace with real FFT data from C++ engine)
-    const cols = W
-    const rows = H
+    // Setup engine hook
+    const engine = getAudioEngine()
+    let latestBins: Float32Array | null = null
+    let unlisten: (() => void) | null = null
+
+    engine.onFftFrame((frame) => {
+      latestBins = frame.bins
+    }).then(u => unlisten = u)
+
     const nyquist = track.sampleRate / 2
     const maxFreq = Math.min(nyquist, 48000)
+    let animId = 0
 
-    for (let x = 0; x < cols; x++) {
-      for (let y = 0; y < rows; y++) {
-        const freq = maxFreq * (1 - y / rows)
-        // Noise floor + peaks simulating music content
-        const t = x / cols
-        const base = Math.max(0, 1 - freq / maxFreq) * 0.6
-        const noise = Math.random() * 0.15
-        const harmonics = Math.sin(t * 180 + freq * 0.002) * 0.2 + 0.2
-        let mag = base + noise + harmonics * (freq < 8000 ? 1 : 0.3)
-        // Spectral cutoff for lossy (simulate 16kHz cutoff if lossy)
-        if (track.isLossyTranscode && freq > 16000) mag *= Math.max(0, 1 - (freq - 16000) / 4000)
-        mag = Math.min(1, Math.max(0, mag))
+    const draw = () => {
+      if (latestBins) {
+        // Shift image left by 2px
+        const imgData = ctx.getImageData(2, 0, W - 2, H)
+        ctx.putImageData(imgData, 0, 0)
 
-        const r = Math.round(mag < 0.5 ? mag * 2 * 100 : 100 + (mag - 0.5) * 2 * 155)
-        const g = Math.round(mag < 0.33 ? 0 : mag < 0.66 ? (mag - 0.33) / 0.33 * 200 : 200)
-        const b = Math.round(mag < 0.5 ? 200 - mag * 2 * 200 : 0)
-        ctx.fillStyle = `rgba(${r},${g},${b},${0.7 + mag * 0.3})`
-        ctx.fillRect(x, y, 1, 1)
+        // Draw new column
+        const binCount = latestBins.length
+        for (let y = 0; y < H; y++) {
+          const freq = maxFreq * (1 - y / H)
+          const binIdx = Math.floor((freq / nyquist) * binCount)
+          const db = latestBins[binIdx] ?? -120
+
+          // Map dB to magnitude 0-1
+          const mag = Math.min(1, Math.max(0, (db + 90) / 90))
+          
+          // Color mapping
+          const r = Math.round(mag < 0.5 ? mag * 2 * 100 : 100 + (mag - 0.5) * 2 * 155)
+          const g = Math.round(mag < 0.33 ? 0 : mag < 0.66 ? (mag - 0.33) / 0.33 * 200 : 200)
+          const b = Math.round(mag < 0.5 ? 200 - mag * 2 * 200 : 0)
+          
+          ctx.fillStyle = `rgba(${r},${g},${b},1)`
+          ctx.fillRect(W - 2, y, 2, 1)
+        }
+
+        // Draw frequency grid lines (redraw so they aren't smeared)
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+        ctx.lineWidth = 1
+        const gridFreqs = [1000, 2000, 4000, 8000, 16000, 20000, 40000]
+        gridFreqs.forEach(f => {
+          if (f > maxFreq) return
+          const y = Math.round(H * (1 - f / maxFreq))
+          ctx.beginPath()
+          ctx.moveTo(0, y)
+          ctx.lineTo(W, y)
+          ctx.stroke()
+          ctx.fillStyle = 'rgba(255,255,255,0.35)'
+          ctx.font = '10px monospace'
+          ctx.textAlign = 'left'
+          ctx.fillText(f >= 1000 ? `${f / 1000}k` : `${f}`, 4, y - 2)
+        })
+
+        latestBins = null // Consume
       }
+      animId = requestAnimationFrame(draw)
     }
+    
+    draw()
 
-    // Frequency grid lines
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)'
-    ctx.lineWidth = 1
-    const gridFreqs = [1000, 2000, 4000, 8000, 16000, 20000, 40000]
-    gridFreqs.forEach(f => {
-      if (f > maxFreq) return
-      const y = Math.round(rows * (1 - f / maxFreq))
-      ctx.beginPath()
-      ctx.moveTo(0, y)
-      ctx.lineTo(W, y)
-      ctx.stroke()
-      ctx.fillStyle = 'rgba(255,255,255,0.35)'
-      ctx.font = '10px monospace'
-      ctx.textAlign = 'left'
-      ctx.fillText(f >= 1000 ? `${f / 1000}k` : `${f}`, 4, y - 2)
-    })
+    return () => {
+      cancelAnimationFrame(animId)
+      if (unlisten) unlisten()
+    }
   }, [track])
 
   return (
@@ -365,7 +388,7 @@ function WaveformCanvas({ track }: { track: AudioTrack | null }) {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) return
     const W = canvas.width, H = canvas.height
     ctx.clearRect(0, 0, W, H)
@@ -380,45 +403,62 @@ function WaveformCanvas({ track }: { track: AudioTrack | null }) {
       return
     }
 
-    const mid = H / 2
-    // Center line
-    ctx.strokeStyle = 'rgba(124,106,255,0.2)'
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(0, mid)
-    ctx.lineTo(W, mid)
-    ctx.stroke()
+    // Setup engine hook
+    const engine = getAudioEngine()
+    let latestPeak = 0
+    let latestRms = 0
+    let unlisten: (() => void) | null = null
 
-    // Simulated RMS envelope
-    ctx.fillStyle = 'rgba(124,106,255,0.5)'
-    for (let x = 0; x < W; x++) {
-      const t = x / W
-      const rms = 0.3 + 0.4 * Math.abs(Math.sin(t * 31)) + 0.2 * Math.random()
-      const peak = Math.min(1, rms + 0.1 + 0.2 * Math.random())
-      const rmsH = rms * mid * 0.85
-      const peakH = peak * mid * 0.92
+    engine.onLevelMeter((meter) => {
+      // average channels for display
+      let peakSum = 0
+      let rmsSum = 0
+      for (const ch of meter.channels) {
+        // map dB (-90 to 0) to linear 0-1
+        peakSum += Math.max(0, (ch.peakDb + 90) / 90)
+        rmsSum += Math.max(0, (ch.rmsDb + 90) / 90)
+      }
+      latestPeak = peakSum / meter.channels.length
+      latestRms = rmsSum / meter.channels.length
+    }).then(u => unlisten = u)
+
+    let animId = 0
+    const mid = H / 2
+
+    const draw = () => {
+      // Shift image left by 2px
+      const imgData = ctx.getImageData(2, 0, W - 2, H)
+      ctx.putImageData(imgData, 0, 0)
+      
+      // Clear new column area
+      ctx.fillStyle = '#050508'
+      ctx.fillRect(W - 2, 0, 2, H)
+
+      // Center line
+      ctx.fillStyle = 'rgba(124,106,255,0.2)'
+      ctx.fillRect(W - 2, mid, 2, 1)
+
+      const peakH = latestPeak * mid * 0.95
+      const rmsH = latestRms * mid * 0.95
+
       ctx.fillStyle = 'rgba(124,106,255,0.25)'
-      ctx.fillRect(x, mid - peakH, 1, peakH * 2)
+      ctx.fillRect(W - 2, mid - peakH, 2, peakH * 2)
+
       ctx.fillStyle = 'rgba(124,106,255,0.7)'
-      ctx.fillRect(x, mid - rmsH, 1, rmsH * 2)
+      ctx.fillRect(W - 2, mid - rmsH, 2, rmsH * 2)
+
+      // Decay
+      latestPeak *= 0.9
+      latestRms *= 0.9
+
+      animId = requestAnimationFrame(draw)
     }
 
-    // Time axis
-    const dur = (track.durationMs || 180000) / 1000
-    const steps = Math.min(10, Math.floor(dur / 30))
-    ctx.fillStyle = 'rgba(255,255,255,0.3)'
-    ctx.font = '10px monospace'
-    ctx.textAlign = 'center'
-    for (let i = 0; i <= steps; i++) {
-      const x = Math.round((i / steps) * W)
-      const sec = (i / steps) * dur
-      const label = `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`
-      ctx.fillText(label, x, H - 4)
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-      ctx.beginPath()
-      ctx.moveTo(x, 0)
-      ctx.lineTo(x, H - 14)
-      ctx.stroke()
+    draw()
+
+    return () => {
+      cancelAnimationFrame(animId)
+      if (unlisten) unlisten()
     }
   }, [track])
 
@@ -450,13 +490,16 @@ function SpectrumCanvas({ track }: { track: AudioTrack | null }) {
 
     const BARS = 128
     const barW = W / BARS
-    // Pseudo-random stable profile for the track
-    const profile = Array.from({ length: BARS }, (_, i) => {
-      const f = i / BARS
-      return Math.max(0, 0.9 - f * 0.6 + 0.3 * Math.sin(f * 40) + 0.15 * Math.sin(f * 120))
-    })
 
-    let frame = 0
+    const engine = getAudioEngine()
+    let latestBins: Float32Array | null = null
+    let unlisten: (() => void) | null = null
+
+    engine.onFftFrame((frame) => {
+      latestBins = frame.bins
+    }).then(u => unlisten = u)
+
+    let frameCount = 0
     const draw = () => {
       ctx.fillStyle = '#050508'
       ctx.fillRect(0, 0, W, H)
@@ -476,25 +519,40 @@ function SpectrumCanvas({ track }: { track: AudioTrack | null }) {
         ctx.fillText(`${db}`, W - 4, y - 2)
       }
 
-      for (let i = 0; i < BARS; i++) {
-        const wobble = 0.03 * Math.sin(frame * 0.05 + i * 0.3)
-        const mag = Math.min(1, Math.max(0, profile[i] + wobble + 0.02 * Math.random()))
-        const barH = mag * (H - 20)
-        const x = i * barW
+      if (latestBins) {
+        const binCount = latestBins.length
+        const binsPerBar = Math.max(1, Math.floor(binCount / BARS))
+        
+        for (let i = 0; i < BARS; i++) {
+          let sum = 0
+          for (let j = 0; j < binsPerBar; j++) {
+            const idx = Math.min(binCount - 1, i * binsPerBar + j)
+            // convert dB (-90 to 0) to approx 0-1
+            const db = latestBins[idx]
+            sum += Math.max(0, (db + 90) / 90)
+          }
+          const mag = Math.min(1, sum / binsPerBar)
 
-        const grad = ctx.createLinearGradient(0, H - barH, 0, H)
-        grad.addColorStop(0, `rgba(124,106,255,${0.5 + mag * 0.5})`)
-        grad.addColorStop(0.7, 'rgba(124,106,255,0.6)')
-        grad.addColorStop(1, 'rgba(80,220,255,0.8)')
-        ctx.fillStyle = grad
-        ctx.fillRect(x + 1, H - 20 - barH, barW - 2, barH)
+          const barH = mag * (H - 20)
+          const x = i * barW
+
+          const grad = ctx.createLinearGradient(0, H - barH, 0, H)
+          grad.addColorStop(0, `rgba(124,106,255,${0.5 + mag * 0.5})`)
+          grad.addColorStop(0.7, 'rgba(124,106,255,0.6)')
+          grad.addColorStop(1, 'rgba(80,220,255,0.8)')
+          ctx.fillStyle = grad
+          ctx.fillRect(x + 1, H - 20 - barH, barW - 2, barH)
+        }
       }
 
-      frame++
+      frameCount++
       animRef.current = requestAnimationFrame(draw)
     }
     draw()
-    return () => cancelAnimationFrame(animRef.current)
+    return () => {
+      cancelAnimationFrame(animRef.current)
+      if (unlisten) unlisten()
+    }
   }, [track])
 
   return <canvas ref={canvasRef} width={800} height={280} className="w-full h-full" />
